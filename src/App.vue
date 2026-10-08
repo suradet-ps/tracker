@@ -13,9 +13,11 @@ import { supabase } from '@/supabase/client';
 import AuthView from '@/views/AuthView.vue';
 
 const SIDEBAR_STORAGE_KEY = 'tracker:sidebar-collapsed';
+const DESKTOP_QUERY = '(min-width: 1024px)';
 
 const session = ref<Session | null>(null);
 let authSubscription: { unsubscribe: () => void } | null = null;
+let desktopMediaQuery: MediaQueryList | null = null;
 
 const route = useRoute();
 const { isDark, toggleTheme } = useTheme();
@@ -38,7 +40,16 @@ watch(sidebarOpen, (open: boolean) => {
   document.body.style.overflow = open ? 'hidden' : '';
 });
 
+// Crossing into desktop layout retires the drawer (and its scroll lock).
+function handleDesktopChange(event: MediaQueryListEvent): void {
+  if (event.matches)
+    sidebarOpen.value = false;
+}
+
 onMounted(() => {
+  desktopMediaQuery = window.matchMedia(DESKTOP_QUERY);
+  desktopMediaQuery.addEventListener('change', handleDesktopChange);
+
   supabase.auth.getSession()
     .then(({ data }) => {
       session.value = data.session;
@@ -55,6 +66,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  desktopMediaQuery?.removeEventListener('change', handleDesktopChange);
   authSubscription?.unsubscribe();
 });
 </script>
