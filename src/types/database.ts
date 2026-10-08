@@ -231,7 +231,7 @@ export type GroupedOrders = Record<string, SupplierOrderGroup>;
 // Notification store payload
 // ─────────────────────────────────────────────
 
-export type NotificationType = 'success' | 'error';
+export type NotificationType = 'success' | 'error' | 'info';
 
 export type NotificationPayload = {
   message: string;
