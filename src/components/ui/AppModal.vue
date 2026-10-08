@@ -20,6 +20,9 @@ const modalRef = ref<HTMLElement | null>(null);
 const previousOverflow = ref<string>('');
 const titleId = `app-modal-title-${Math.random().toString(36).slice(2, 9)}`;
 
+// The element focused before the dialog opened, restored on close.
+let previouslyFocused: HTMLElement | null = null;
+
 const FOCUSABLE_SELECTOR = [
   'a[href]',
   'button:not([disabled])',
@@ -65,6 +68,9 @@ function handleKeydown(event: KeyboardEvent): void {
 
 onMounted(async () => {
   document.addEventListener('keydown', handleKeydown);
+  previouslyFocused = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
   previousOverflow.value = document.body.style.overflow;
   document.body.style.overflow = 'hidden';
 
@@ -76,6 +82,10 @@ onMounted(async () => {
 onUnmounted(() => {
   document.removeEventListener('keydown', handleKeydown);
   document.body.style.overflow = previousOverflow.value;
+
+  // Return focus where it was so keyboard users keep their place.
+  if (previouslyFocused && document.contains(previouslyFocused))
+    previouslyFocused.focus();
 });
 </script>
 

@@ -57,6 +57,7 @@ const userInitial = computed<string>(() =>
   (user.value?.email ?? '?').charAt(0).toUpperCase(),
 );
 
+/** Resolves a nav badge to its current counter value. */
 function badgeValue(badge: NavItem['badge']): number {
   if (badge === 'pending')
     return counts.pending;
@@ -65,6 +66,7 @@ function badgeValue(badge: NavItem['badge']): number {
   return 0;
 }
 
+/** Signs the user out and returns to the auth screen. */
 async function handleLogout(): Promise<void> {
   try {
     const { error } = await supabase.auth.signOut();
@@ -443,12 +445,20 @@ onMounted(async () => {
 @media (max-width: 1023px) {
   .sidebar {
     width: min(var(--sidebar-w), 84vw);
+    /* `visibility` keeps the closed drawer out of the focus order and the
+       accessibility tree; the delay lets the slide-out finish first. */
+    visibility: hidden;
     transform: translateX(-100%);
     box-shadow: var(--shadow-lg);
+    transition:
+      transform 0.24s ease,
+      visibility 0s linear 0.24s;
   }
 
   .sidebar.is-open {
+    visibility: visible;
     transform: translateX(0);
+    transition: transform 0.24s ease;
   }
 
   .sidebar.is-collapsed {
