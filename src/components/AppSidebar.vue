@@ -104,7 +104,9 @@ onMounted(async () => {
         <button
           type="button"
           class="btn btn-subtle btn-icon btn-sm collapse-toggle"
+          :class="{ 'is-flipped': props.collapsed }"
           :aria-label="props.collapsed ? 'ขยายเมนู' : 'ย่อเมนู'"
+          :title="props.collapsed ? 'ขยายเมนู' : 'ย่อเมนู'"
           @click="emit('toggleCollapse')"
         >
           <AppIcon name="panelLeft" :size="16" />
@@ -382,14 +384,30 @@ onMounted(async () => {
 .sidebar.is-collapsed .nav-label,
 .sidebar.is-collapsed .nav-section,
 .sidebar.is-collapsed .user-meta,
-.sidebar.is-collapsed .collapse-toggle,
 .sidebar.is-collapsed .nav-badge {
   display: none;
 }
 
-.sidebar.is-collapsed .sidebar-head {
-  justify-content: center;
-  padding-inline: 0.5rem;
+.sidebar.is-collapsed .collapse-toggle {
+  margin-left: 0;
+}
+
+.collapse-toggle .icon {
+  transition: transform 0.2s ease;
+}
+
+.collapse-toggle.is-flipped .icon {
+  transform: rotate(180deg);
+}
+
+/* The rail stacks its brand and expand control so the toggle stays reachable. */
+@media (min-width: 1024px) {
+  .sidebar.is-collapsed .sidebar-head {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.45rem;
+    padding-inline: 0.5rem;
+  }
 }
 
 .sidebar.is-collapsed .nav-item {
