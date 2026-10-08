@@ -223,7 +223,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
       // ถ้าโดน rate limit ให้รอตามที่ Telegram แจ้งแล้วลองอีกครั้ง
       if (response.status === 429) {
-        await new Promise(resolve => setTimeout(resolve, await retryAfterMs(response)));
+        const waitMs = await retryAfterMs(response);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
         response = await sendChunk(telegramApiUrl, chunks[index] ?? '');
       }
 
