@@ -43,7 +43,7 @@ const page = ref<number>(1);
 const pageSize = ref<number>(50);
 
 // ─────────────────────────────────────────────
-// Computed — Filtering
+// Computed - Filtering
 // ─────────────────────────────────────────────
 
 /** Items that match the current search and supplier filter */
@@ -88,7 +88,7 @@ const selectedTotal = computed<number>(() =>
 );
 
 // ─────────────────────────────────────────────
-// Computed — Pagination
+// Computed - Pagination
 // ─────────────────────────────────────────────
 
 const totalPages = computed<number>(
@@ -298,7 +298,7 @@ onMounted(fetchCatalog);
 
           <table class="data-table catalog-table">
             <caption class="sr-only">
-              คลังรายการยา — เลือกและระบุจำนวนเพื่อสร้างใบสั่งซื้อ
+              คลังรายการยา - เลือกและระบุจำนวนเพื่อสร้างใบสั่งซื้อ
             </caption>
             <thead>
               <tr>
@@ -351,7 +351,7 @@ onMounted(fetchCatalog);
                     <template v-if="item.drug.form">{{ item.drug.form }}</template>
                     <template v-if="item.drug.form && item.drug.strength"> · </template>
                     <template v-if="item.drug.strength">{{ item.drug.strength }}</template>
-                    <template v-if="!item.drug.form && !item.drug.strength">—</template>
+                    <template v-if="!item.drug.form && !item.drug.strength">-</template>
                   </span>
                 </td>
 
@@ -410,7 +410,7 @@ onMounted(fetchCatalog);
 
         <!-- Pagination -->
         <div class="pagination">
-          <span>แสดง {{ rangeStart }}–{{ rangeEnd }} จาก {{ filteredItems.length }} รายการ</span>
+          <span>แสดง {{ rangeStart }}-{{ rangeEnd }} จาก {{ filteredItems.length }} รายการ</span>
 
           <div class="page-controls">
             <label class="page-size">

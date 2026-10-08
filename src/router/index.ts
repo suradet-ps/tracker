@@ -63,7 +63,7 @@ const router = createRouter({
   },
 });
 
-// Navigation guard — redirects unauthenticated users to Auth,
+// Navigation guard - redirects unauthenticated users to Auth,
 // and authenticated users away from the Auth page.
 router.beforeEach(async (to, _from, next) => {
   let session = null;

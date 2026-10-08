@@ -222,7 +222,7 @@ onMounted(fetchHistory);
           ประวัติการสั่งซื้อ
         </h1>
         <p class="page-desc">
-          ทุกคำสั่งซื้อพร้อมสถานะและวันที่ — ค้นหาเพื่อตรวจสอบย้อนหลังได้เสมอ
+          ทุกคำสั่งซื้อพร้อมสถานะและวันที่ - ค้นหาเพื่อตรวจสอบย้อนหลังได้เสมอ
         </p>
       </div>
       <div class="page-actions">
@@ -399,7 +399,7 @@ onMounted(fetchHistory);
 
         <!-- Pagination -->
         <div class="pagination">
-          <span>แสดง {{ rangeStart }}–{{ rangeEnd }} จาก {{ filteredOrders.length }} รายการ</span>
+          <span>แสดง {{ rangeStart }}-{{ rangeEnd }} จาก {{ filteredOrders.length }} รายการ</span>
 
           <div class="page-controls">
             <label class="page-size">

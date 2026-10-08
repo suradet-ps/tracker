@@ -71,7 +71,7 @@ onUnmounted(() => {
     />
 
     <div class="app-main">
-      <!-- Compact app bar — mobile and tablet only -->
+      <!-- Compact app bar - mobile and tablet only -->
       <header class="topbar">
         <button
           type="button"
@@ -159,7 +159,7 @@ onUnmounted(() => {
 }
 
 /* Navigation stays snappy: the old screen leaves immediately and the new
-   one settles in with a short fade — no vertical movement, no blank gap. */
+   one settles in with a short fade - no vertical movement, no blank gap. */
 .page-enter-active {
   transition: opacity 0.12s ease;
 }

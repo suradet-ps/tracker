@@ -159,7 +159,7 @@ onMounted(async () => {
         <div class="user-card">
           <span class="user-avatar" aria-hidden="true">{{ userInitial }}</span>
           <span class="user-meta">
-            <span class="user-email" :title="user?.email ?? ''">{{ user?.email ?? '—' }}</span>
+            <span class="user-email" :title="user?.email ?? ''">{{ user?.email ?? '-' }}</span>
             <span class="user-role">ผู้ใช้งานระบบ</span>
           </span>
           <button

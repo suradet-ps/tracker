@@ -1,4 +1,4 @@
-// Supabase Database schema types — auto-generated style, kept in sync manually.
+// Supabase Database schema types - auto-generated style, kept in sync manually.
 
 // ─────────────────────────────────────────────
 // Database schema definition
@@ -280,7 +280,7 @@ export type QuickOrderDraftItem = {
   quantity: number;
   unitCount: string;
   packaging: string;
-  /** Resolved supplier ID — set after upsert; may be null for brand-new suppliers */
+  /** Resolved supplier ID - set after upsert; may be null for brand-new suppliers */
   supplierId: number | null;
   /** Editable supplier name; used as the source of truth for submission */
   supplierName: string;

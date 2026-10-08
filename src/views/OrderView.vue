@@ -314,7 +314,7 @@ onMounted(fetchOrdersToBuy);
       v-else-if="orders.length === 0"
       icon="checkCircle"
       title="ไม่มีรายการที่ต้องสั่งซื้อ"
-      description="ทุกรายการถูกดำเนินการแล้ว — เพิ่มรายการใหม่เพื่อเริ่มรอบถัดไป"
+      description="ทุกรายการถูกดำเนินการแล้ว - เพิ่มรายการใหม่เพื่อเริ่มรอบถัดไป"
     >
       <button type="button" class="btn btn-primary" @click="showAddForm = true">
         <AppIcon name="plus" :size="16" />

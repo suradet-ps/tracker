@@ -8,7 +8,7 @@
  */
 export function formatDate(dateString: string | null | undefined): string {
   if (!dateString)
-    return '—';
+    return '-';
 
   const options: Intl.DateTimeFormatOptions = {
     year: 'numeric',

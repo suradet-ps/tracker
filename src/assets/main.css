@@ -8,7 +8,7 @@
    ============================================================ */
 
 /* ------------------------------------------------------------
-   1. Tokens — light (default)
+   1. Tokens - light (default)
    ------------------------------------------------------------ */
 :root {
   color-scheme: light;
@@ -118,7 +118,7 @@
 }
 
 /* ------------------------------------------------------------
-   2. Tokens — dark
+   2. Tokens - dark
    ------------------------------------------------------------ */
 html.dark {
   color-scheme: dark;
@@ -290,7 +290,7 @@ ol {
   background: transparent;
 }
 
-/* Motion — respect vestibular preferences */
+/* Motion - respect vestibular preferences */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

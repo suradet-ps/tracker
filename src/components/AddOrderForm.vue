@@ -128,7 +128,7 @@ async function handleSubmit(): Promise<void> {
   <AppModal title="เพิ่มรายการสั่งซื้อด้วยตนเอง" size="md" @close="emit('close')">
     <form id="add-order-form" class="add-form" @submit.prevent="handleSubmit">
       <p class="form-note">
-        บันทึกในสถานะ <strong>ต้องสั่งซื้อ</strong> — เลือกรายการนี้ในหน้ารายการเพื่อสร้างใบสั่งซื้อได้ทันที
+        บันทึกในสถานะ <strong>ต้องสั่งซื้อ</strong> - เลือกรายการนี้ในหน้ารายการเพื่อสร้างใบสั่งซื้อได้ทันที
       </p>
 
       <div class="form-grid">

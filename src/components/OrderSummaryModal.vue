@@ -177,7 +177,7 @@ async function confirmAndSend(): Promise<void> {
         );
       }
 
-      // Notification succeeded — update DB for this supplier's orders immediately
+      // Notification succeeded - update DB for this supplier's orders immediately
       const { error: dbError } = await supabase
         .from('purchase_orders')
         .update({ status: 'สั่งแล้ว', order_date: dateForDatabase })

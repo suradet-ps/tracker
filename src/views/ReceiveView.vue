@@ -65,7 +65,7 @@ const oldestOrderDate = computed<string>(() => {
     .filter((date): date is string => Boolean(date))
     .sort();
 
-  return dates.length > 0 ? formatDate(dates[0]) : '—';
+  return dates.length > 0 ? formatDate(dates[0]) : '-';
 });
 
 /** Whether any filter is currently active */
@@ -203,7 +203,7 @@ onMounted(fetchOrdersToReceive);
           รายการรอรับของ
         </h1>
         <p class="page-desc">
-          บันทึกวันที่รับของจริงเพื่อปิดรายการ — รายการจะย้ายไปอยู่ในประวัติทันที
+          บันทึกวันที่รับของจริงเพื่อปิดรายการ - รายการจะย้ายไปอยู่ในประวัติทันที
         </p>
       </div>
       <div class="page-actions">
