@@ -124,9 +124,9 @@ history  ▸ full log with statuses and timestamps ─────────�
 ```
 
 **Raising the artifact** - the quality bar is ESLint and the local
-build; the [CI workflow](.github/workflows) gates every push. Supabase
-schema and edge functions live under `supabase/`. Open an issue first to
-discuss a change.
+build; the [CI workflow](.github/workflows) gates every push. The
+interface rules live in [DESIGN.md](DESIGN.md); Supabase schema and edge
+functions live under `supabase/`. Open an issue first to discuss a change.
 
 **Status** - every push runs the [CI gate](.github/workflows/ci.yml) on
 the way to Firebase Hosting.
