@@ -141,6 +141,7 @@ watch(totalPages, (max: number) => {
 // Helpers
 // ─────────────────────────────────────────────
 
+/** Compares ISO date strings, always sorting missing dates last. */
 function compareNullableDates(a: string | null, b: string | null, direction: number): number {
   if (!a && !b)
     return 0;
@@ -151,12 +152,14 @@ function compareNullableDates(a: string | null, b: string | null, direction: num
   return a.localeCompare(b) * direction;
 }
 
+/** Resets the search, supplier, and status filters. */
 function clearFilters(): void {
   searchQuery.value = '';
   supplierFilter.value = '';
   statusFilter.value = 'all';
 }
 
+/** Cycles the sort for `key` between ascending and descending. */
 function toggleSort(key: SortKey): void {
   if (sortKey.value === key) {
     sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
@@ -167,12 +170,14 @@ function toggleSort(key: SortKey): void {
   }
 }
 
+/** Reports the current sort state for a column in `aria-sort` terms. */
 function ariaSort(key: SortKey): 'ascending' | 'descending' | 'none' {
   if (sortKey.value !== key)
     return 'none';
   return sortDirection.value === 'asc' ? 'ascending' : 'descending';
 }
 
+/** Picks the icon that matches a column's current sort state. */
 function sortIcon(key: SortKey): 'arrowUp' | 'arrowDown' | 'arrowUpDown' {
   if (sortKey.value !== key)
     return 'arrowUpDown';
@@ -183,6 +188,7 @@ function sortIcon(key: SortKey): 'arrowUp' | 'arrowDown' | 'arrowUpDown' {
 // Data fetching
 // ─────────────────────────────────────────────
 
+/** Loads the full order history, newest first. */
 async function fetchHistory(): Promise<void> {
   loading.value = true;
   error.value = null;

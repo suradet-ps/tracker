@@ -122,10 +122,12 @@ watch(totalPages, (max: number) => {
 // Selection Helpers
 // ─────────────────────────────────────────────
 
+/** Checks or unchecks a single draft item. */
 function toggleItem(item: QuickOrderDraftItem): void {
   item.isSelected = !item.isSelected;
 }
 
+/** Checks or unchecks every item currently visible under the filters. */
 function toggleAllFiltered(event: Event): void {
   const checked = (event.target as HTMLInputElement).checked;
   filteredItems.value.forEach((item) => {
@@ -133,17 +135,20 @@ function toggleAllFiltered(event: Event): void {
   });
 }
 
+/** Clears the selection across every page of the catalog. */
 function clearAllSelections(): void {
   draftItems.value.forEach((item) => {
     item.isSelected = false;
   });
 }
 
+/** Clears the search query and supplier filter. */
 function clearFilters(): void {
   searchQuery.value = '';
   supplierFilter.value = '';
 }
 
+/** True when a selected item is missing a supplier or has invalid numbers. */
 function isItemInvalid(item: QuickOrderDraftItem): boolean {
   return item.isSelected && (
     !item.supplierName.trim()
@@ -156,6 +161,7 @@ function isItemInvalid(item: QuickOrderDraftItem): boolean {
 // Submit Handler
 // ─────────────────────────────────────────────
 
+/** Creates the orders, refreshes counters, and returns to the pending queue. */
 async function handleSubmit(): Promise<void> {
   try {
     const count = await submitOrders();

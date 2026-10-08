@@ -77,6 +77,7 @@ const hasActiveFilter = computed<boolean>(
 // Helpers
 // ─────────────────────────────────────────────
 
+/** Clears the search query and supplier filter. */
 function clearFilters(): void {
   searchQuery.value = '';
   supplierFilter.value = '';
@@ -106,6 +107,7 @@ function toReceivableOrder(row: ReceiveViewOrder): ReceivableOrder {
 // Data fetching
 // ─────────────────────────────────────────────
 
+/** Loads the receiving queue and prunes a supplier filter that no longer exists. */
 async function fetchOrdersToReceive(): Promise<void> {
   loading.value = true;
   error.value = null;

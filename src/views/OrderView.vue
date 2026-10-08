@@ -126,6 +126,7 @@ const groupedSelectedOrders = computed<GroupedOrders>(() => {
 // Sorting helpers
 // ─────────────────────────────────────────────
 
+/** Cycles the sort for `key` between ascending and descending. */
 function toggleSort(key: SortKey): void {
   if (sortKey.value === key) {
     sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
@@ -136,12 +137,14 @@ function toggleSort(key: SortKey): void {
   }
 }
 
+/** Reports the current sort state for a column in `aria-sort` terms. */
 function ariaSort(key: SortKey): 'ascending' | 'descending' | 'none' {
   if (sortKey.value !== key)
     return 'none';
   return sortDirection.value === 'asc' ? 'ascending' : 'descending';
 }
 
+/** Picks the icon that matches a column's current sort state. */
 function sortIcon(key: SortKey): 'arrowUp' | 'arrowDown' | 'arrowUpDown' {
   if (sortKey.value !== key)
     return 'arrowUpDown';
@@ -152,6 +155,7 @@ function sortIcon(key: SortKey): 'arrowUp' | 'arrowDown' | 'arrowUpDown' {
 // Data fetching
 // ─────────────────────────────────────────────
 
+/** Loads the pending queue and prunes selections and filters that no longer exist. */
 async function fetchOrdersToBuy(): Promise<void> {
   try {
     loading.value = true;
@@ -192,11 +196,13 @@ async function fetchOrdersToBuy(): Promise<void> {
 // Filter & selection actions
 // ─────────────────────────────────────────────
 
+/** Clears the search query and supplier filter. */
 function clearFilters(): void {
   searchQuery.value = '';
   supplierFilter.value = '';
 }
 
+/** Selects or deselects every row currently visible under the filters. */
 function toggleSelectAllVisible(event: Event): void {
   const checked = (event.target as HTMLInputElement).checked;
   const next = new Set(selectedOrderIds.value);
@@ -211,6 +217,7 @@ function toggleSelectAllVisible(event: Event): void {
   selectedOrderIds.value = next;
 }
 
+/** Adds or removes a single order from the selection set. */
 function toggleSelection(id: number): void {
   const next = new Set(selectedOrderIds.value);
 
@@ -224,10 +231,12 @@ function toggleSelection(id: number): void {
   selectedOrderIds.value = next;
 }
 
+/** Empties the selection. */
 function clearSelection(): void {
   selectedOrderIds.value = new Set();
 }
 
+/** Opens the composition dialog when at least one row is selected. */
 function openSummaryModal(): void {
   if (selectedOrderIds.value.size > 0) {
     isModalVisible.value = true;
@@ -238,6 +247,7 @@ function openSummaryModal(): void {
 // Event handlers from child components
 // ─────────────────────────────────────────────
 
+/** Refreshes the queue and sidebar counters after a manual order is added. */
 function handleOrderAdded(): void {
   showAddForm.value = false;
   notificationStore.showNotification({ message: 'เพิ่มรายการใหม่เรียบร้อย!', type: 'success' });
@@ -245,6 +255,7 @@ function handleOrderAdded(): void {
   countsStore.refresh();
 }
 
+/** Clears the selection and refreshes the queue after orders are sent. */
 function handleOrdersSent(): void {
   isModalVisible.value = false;
   clearSelection();
