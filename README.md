@@ -64,6 +64,24 @@ project, and a Telegram bot with its chat id.
 
 </details>
 
+<details>
+<summary>Deploying the Telegram edge function</summary>
+
+The notifier lives in `supabase/functions/send-telegram-notify`. After
+changing it, deploy with the Supabase CLI (Docker is not required):
+
+```
+⟫ npx supabase login
+⟫ npx supabase link --project-ref YOUR_PROJECT_REF
+⟫ npx supabase functions deploy send-telegram-notify
+```
+
+Secrets stay in the Supabase project (`TELEGRAM_BOT_TOKEN`,
+`TELEGRAM_CHAT_ID`); they are never Vite variables. Local CLI state such
+as `supabase/.temp/` is ignored by git.
+
+</details>
+
 Deploy: `⟫ npm run build` then either `⟫ firebase deploy` (the
 `firebase.json` rewrites serve the SPA from `dist/`) or push to Vercel
 (the `vercel.json` rewrites provide the same SPA fallback for deep links
