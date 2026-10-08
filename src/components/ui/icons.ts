@@ -46,7 +46,7 @@ export const ICON_PATHS = {
   info: ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z', 'M12 16v-4', 'M12 8h.01'],
   chevronDown: ['m6 9 6 6 6-6'],
   chevronLeft: ['m15 18-6-6 6-6'],
-  chevronRight: ['m9 18 6-6-6 6'],
+  chevronRight: ['m9 18 6-6-6-6'],
   chevronsLeft: ['m11 17-5-5 5-5', 'm18 17-5-5 5-5'],
   chevronsRight: ['m13 17 5-5-5-5', 'm6 17 5-5-5-5'],
   logOut: ['M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4', 'm16 17 5-5-5-5', 'M21 12H9'],
