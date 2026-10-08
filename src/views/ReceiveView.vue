@@ -3,7 +3,12 @@
 import type { ReceivableOrder, ReceiveViewOrder } from '@/types/database';
 
 import { computed, onMounted, ref } from 'vue';
+import AppIcon from '@/components/ui/AppIcon.vue';
+import EmptyState from '@/components/ui/EmptyState.vue';
+import StatCard from '@/components/ui/StatCard.vue';
+import TableSkeleton from '@/components/ui/TableSkeleton.vue';
 import { useNotificationStore } from '@/stores/notification';
+import { useOrderCountsStore } from '@/stores/order-counts';
 import { supabase } from '@/supabase/client';
 import { formatDate } from '@/utils/date';
 
@@ -12,6 +17,7 @@ import { formatDate } from '@/utils/date';
 // ─────────────────────────────────────────────
 
 const notificationStore = useNotificationStore();
+const countsStore = useOrderCountsStore();
 
 // ─────────────────────────────────────────────
 // Reactive state
@@ -33,7 +39,7 @@ const error = ref<string | null>(null);
  */
 const filteredOrders = computed<ReceivableOrder[]>(() => {
   const query = searchQuery.value.trim().toLowerCase();
-  const supplier = supplierFilter.value.trim().toLowerCase();
+  const supplier = supplierFilter.value;
 
   if (!query && !supplier) {
     return orders.value;
@@ -42,14 +48,30 @@ const filteredOrders = computed<ReceivableOrder[]>(() => {
   return orders.value.filter((order) => {
     const drugText = `${order.drugs.name} ${order.drugs.form ?? ''} ${order.drugs.strength ?? ''}`.toLowerCase();
     const matchesName = !query || drugText.includes(query);
-    const matchesSupplier = !supplier || order.suppliers.name.toLowerCase().includes(supplier);
+    const matchesSupplier = !supplier || order.suppliers.name === supplier;
     return matchesName && matchesSupplier;
   });
 });
 
+/** Unique supplier names present in the queue, for the filter select. */
+const supplierNames = computed<string[]>(() =>
+  [...new Set(orders.value.map(order => order.suppliers.name))]
+    .sort((a, b) => a.localeCompare(b, 'th')),
+);
+
+/** Oldest pending order date, if any. */
+const oldestOrderDate = computed<string>(() => {
+  const dates = orders.value
+    .map(order => order.order_date)
+    .filter((date): date is string => Boolean(date))
+    .sort();
+
+  return dates.length > 0 ? formatDate(dates[0]) : '—';
+});
+
 /** Whether any filter is currently active */
 const hasActiveFilter = computed<boolean>(
-  () => searchQuery.value.trim() !== '' || supplierFilter.value.trim() !== '',
+  () => searchQuery.value.trim() !== '' || supplierFilter.value !== '',
 );
 
 // ─────────────────────────────────────────────
@@ -59,6 +81,14 @@ const hasActiveFilter = computed<boolean>(
 function clearFilters(): void {
   searchQuery.value = '';
   supplierFilter.value = '';
+}
+
+/** Today's date as the `YYYY-MM-DD` string an `<input type="date">` expects. */
+function todayIso(): string {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${now.getFullYear()}-${month}-${day}`;
 }
 
 /**
@@ -95,7 +125,7 @@ async function fetchOrdersToReceive(): Promise<void> {
   }
   catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
-    error.value = `เกิดข้อผิดพลาดในการดึงข้อมูล: ${message}`;
+    error.value = `ไม่สามารถดึงรายการได้: ${message}`;
   }
   finally {
     loading.value = false;
@@ -113,7 +143,7 @@ async function fetchOrdersToReceive(): Promise<void> {
 async function markAsReceived(order: ReceivableOrder): Promise<void> {
   if (!order.received_date_input) {
     notificationStore.showNotification({
-      message: 'กรุณาเลือกวันที่รับของ',
+      message: `กรุณาเลือกวันที่รับของสำหรับ "${order.drugs.name}"`,
       type: 'error',
     });
     return;
@@ -137,9 +167,10 @@ async function markAsReceived(order: ReceivableOrder): Promise<void> {
     // Remove the order from the local list after successful update
     orders.value = orders.value.filter(o => o.id !== order.id);
     notificationStore.showNotification({
-      message: 'บันทึกการรับของเรียบร้อย!',
+      message: `บันทึกการรับของ "${order.drugs.name}" เรียบร้อย!`,
       type: 'success',
     });
+    countsStore.refresh();
   }
   catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
@@ -161,198 +192,176 @@ onMounted(fetchOrdersToReceive);
 </script>
 
 <template>
-  <div class="page-container">
+  <div class="page">
     <header class="page-header">
-      <h1>รายการรอรับของ</h1>
-      <p class="subtitle">
-        รายการยาที่สั่งซื้อไปแล้วและกำลังรอการจัดส่ง บันทึกวันที่รับของเพื่อย้ายไปยังประวัติ
-      </p>
+      <div>
+        <h1 class="page-title">
+          รายการรอรับของ
+        </h1>
+        <p class="page-desc">
+          บันทึกวันที่รับของจริงเพื่อปิดรายการ — รายการจะย้ายไปอยู่ในประวัติทันที
+        </p>
+      </div>
+      <div class="page-actions">
+        <button type="button" class="btn btn-ghost" :disabled="loading" @click="fetchOrdersToReceive">
+          <AppIcon name="refresh" :size="16" />
+          รีเฟรช
+        </button>
+      </div>
     </header>
 
-    <!-- Loading State -->
-    <div v-if="loading" class="status-state loading-state">
-      <div class="spinner" />
-      <p>กำลังโหลดข้อมูล...</p>
-    </div>
+    <!-- Loading -->
+    <template v-if="loading">
+      <div class="stat-grid">
+        <div v-for="card in 3" :key="card" class="stat-card">
+          <span class="skeleton" style="width: 36px; height: 36px; border-radius: 8px;" />
+          <div style="flex: 1;">
+            <span class="skeleton skeleton-line" style="width: 55%;" />
+            <span class="skeleton skeleton-line" style="width: 35%; margin-top: 6px;" />
+          </div>
+        </div>
+      </div>
+      <TableSkeleton :rows="6" :columns="5" />
+    </template>
 
-    <!-- Error State -->
-    <div v-else-if="error" class="status-state error-state">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="40"
-        height="40"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="8" x2="12" y2="12" />
-        <line x1="12" y1="16" x2="12.01" y2="16" />
-      </svg>
-      <p>{{ error }}</p>
-      <button class="btn btn-secondary" type="button" @click="fetchOrdersToReceive">
+    <!-- Error -->
+    <EmptyState
+      v-else-if="error"
+      is-error
+      icon="alertCircle"
+      title="โหลดรายการไม่สำเร็จ"
+      :description="error"
+    >
+      <button type="button" class="btn btn-ghost" @click="fetchOrdersToReceive">
+        <AppIcon name="refresh" :size="16" />
         ลองใหม่อีกครั้ง
       </button>
-    </div>
+    </EmptyState>
 
-    <!-- Empty DB State -->
-    <div v-else-if="orders.length === 0" class="status-state empty-state">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="48"
-        height="48"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <rect x="1" y="3" width="15" height="13" />
-        <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
-        <circle cx="5.5" cy="18.5" r="2.5" />
-        <circle cx="18.5" cy="18.5" r="2.5" />
-      </svg>
-      <p>ไม่มีรายการที่รอรับของในขณะนี้</p>
-    </div>
+    <!-- Empty queue -->
+    <EmptyState
+      v-else-if="orders.length === 0"
+      icon="truck"
+      title="ไม่มีรายการที่รอรับของ"
+      description="เมื่อสร้างใบสั่งซื้อแล้ว รายการจะปรากฏที่นี่เพื่อรอการยืนยันรับของ"
+    />
 
     <template v-else>
-      <!-- Filter Bar — shown only when there is data -->
-      <div class="filter-bar card">
-        <div class="filter-group">
-          <label for="receive-search" class="filter-label">ค้นหายา</label>
-          <div class="input-icon-wrapper">
-            <svg
-              class="input-icon"
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              id="receive-search"
-              v-model="searchQuery"
-              type="search"
-              class="form-input"
-              placeholder="ชื่อยา, รูปแบบ, ความแรง..."
-              autocomplete="off"
-            >
-          </div>
-        </div>
+      <!-- Queue metrics -->
+      <div class="stat-grid">
+        <StatCard label="รอรับของ" :value="orders.length" hint="รายการที่สั่งแล้ว" icon="truck" />
+        <StatCard label="บริษัทผู้จำหน่าย" :value="supplierNames.length" hint="ในคิวรอรับ" icon="building" />
+        <StatCard label="สั่งซื้อเก่าสุด" :value="oldestOrderDate" hint="ควรรีบติดตาม" icon="clock" />
+      </div>
 
-        <div class="filter-group">
-          <label for="receive-supplier" class="filter-label">กรองตามบริษัท</label>
-          <div class="input-icon-wrapper">
-            <svg
-              class="input-icon"
-              xmlns="http://www.w3.org/2000/svg"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-              <polyline points="9 22 9 12 15 12 15 22" />
-            </svg>
-            <input
-              id="receive-supplier"
-              v-model="supplierFilter"
-              type="search"
-              class="form-input"
-              placeholder="ชื่อบริษัท..."
-              autocomplete="off"
-            >
-          </div>
-        </div>
-
-        <div class="filter-meta">
-          <span class="result-count">
-            แสดง <strong>{{ filteredOrders.length }}</strong> / {{ orders.length }} รายการ
-          </span>
-          <button
-            v-if="hasActiveFilter"
-            class="btn btn-ghost btn-sm"
-            type="button"
-            @click="clearFilters"
+      <!-- Toolbar -->
+      <div class="toolbar">
+        <div class="input-wrap search-field">
+          <AppIcon name="search" :size="16" class="input-icon" />
+          <input
+            v-model="searchQuery"
+            type="search"
+            class="form-input"
+            placeholder="ค้นหาชื่อยา รูปแบบ หรือความแรง..."
+            aria-label="ค้นหายา"
+            autocomplete="off"
           >
+        </div>
+
+        <div class="select-field">
+          <select v-model="supplierFilter" class="form-select" aria-label="กรองตามบริษัท">
+            <option value="">
+              ทุกบริษัท
+            </option>
+            <option v-for="name in supplierNames" :key="name" :value="name">
+              {{ name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="toolbar-meta">
+          <span>แสดง <strong>{{ filteredOrders.length }}</strong> / {{ orders.length }} รายการ</span>
+          <button v-if="hasActiveFilter" type="button" class="btn btn-subtle btn-sm" @click="clearFilters">
             ล้างตัวกรอง
           </button>
         </div>
       </div>
 
-      <!-- No Search Results -->
-      <div v-if="filteredOrders.length === 0" class="status-state empty-state">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="48"
-          height="48"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <p>ไม่พบรายการที่ตรงกับการค้นหา</p>
-        <button class="btn btn-secondary btn-sm" type="button" @click="clearFilters">
+      <!-- Filtered to nothing -->
+      <EmptyState
+        v-if="filteredOrders.length === 0"
+        icon="search"
+        title="ไม่พบรายการที่ตรงกับตัวกรอง"
+        description="ลองเปลี่ยนคำค้นหาหรือเลือกบริษัทอื่น"
+      >
+        <button type="button" class="btn btn-ghost" @click="clearFilters">
           ล้างตัวกรอง
         </button>
-      </div>
+      </EmptyState>
 
-      <!-- Receive Table -->
-      <div v-else class="table-container">
-        <table>
+      <!-- Receive table -->
+      <div v-else class="table-wrap">
+        <table class="data-table">
+          <caption class="sr-only">
+            รายการที่สั่งซื้อแล้วและรอการยืนยันรับของ
+          </caption>
           <thead>
             <tr>
-              <th>ชื่อยา</th>
-              <th>บริษัท</th>
-              <th>วันที่สั่งซื้อ</th>
-              <th class="action-column">
+              <th scope="col">
+                ชื่อยา
+              </th>
+              <th scope="col">
+                บริษัท
+              </th>
+              <th scope="col">
+                วันที่สั่งซื้อ
+              </th>
+              <th scope="col">
                 วันที่รับของ
               </th>
-              <th class="action-column" />
+              <th scope="col" class="col-actions">
+                <span class="sr-only">การจัดการ</span>
+              </th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="order in filteredOrders" :key="order.id">
               <td>
-                <div class="drug-name">
-                  {{ order.drugs.name }}
-                </div>
-                <div class="drug-detail">
+                <span class="row-title">{{ order.drugs.name }}</span>
+                <span class="row-meta">
                   {{ order.drugs.form }} {{ order.drugs.strength }}
-                  <span v-if="order.packaging">({{ order.packaging }})</span>
-                </div>
+                  <template v-if="order.packaging"> · {{ order.packaging }}</template>
+                </span>
               </td>
               <td>{{ order.suppliers.name }}</td>
               <td>{{ formatDate(order.order_date) }}</td>
               <td>
-                <input v-model="order.received_date_input" type="date" class="form-input date-input">
+                <div class="date-cell">
+                  <input
+                    v-model="order.received_date_input"
+                    type="date"
+                    class="form-input form-input-sm"
+                    :aria-label="`วันที่รับของ ${order.drugs.name}`"
+                  >
+                  <button
+                    type="button"
+                    class="btn btn-subtle btn-sm"
+                    title="ตั้งวันที่เป็นวันนี้"
+                    @click="order.received_date_input = todayIso()"
+                  >
+                    วันนี้
+                  </button>
+                </div>
               </td>
-              <td>
+              <td class="col-actions">
                 <button
-                  class="btn btn-primary btn-full"
+                  type="button"
+                  class="btn btn-primary btn-sm"
                   :disabled="!order.received_date_input || order.isSaving"
                   @click="markAsReceived(order)"
                 >
+                  <span v-if="order.isSaving" class="spinner spinner-sm" />
+                  <AppIcon v-else name="check" :size="15" />
                   {{ order.isSaving ? 'กำลังบันทึก...' : 'บันทึก' }}
                 </button>
               </td>
@@ -365,171 +374,21 @@ onMounted(fetchOrdersToReceive);
 </template>
 
 <style scoped>
-/* ─── Filter Bar ─── */
-
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 1rem 1.5rem;
-  padding: 1.25rem 1.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  flex: 1 1 200px;
-}
-
-.filter-label {
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--subtle-text-color);
-}
-
-.input-icon-wrapper {
-  position: relative;
-}
-
-.input-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--subtle-text-color);
-  pointer-events: none;
-}
-
-.input-icon-wrapper .form-input {
-  padding-left: 2.25rem;
-}
-
-.filter-meta {
+.date-cell {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.result-count {
-  font-size: 0.9rem;
-  color: var(--subtle-text-color);
+  gap: 0.35rem;
   white-space: nowrap;
 }
 
-/* ─── Status States ─── */
-
-.status-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: 5rem 1rem;
-  color: var(--subtle-text-color);
-  text-align: center;
+.form-input-sm {
+  min-height: 34px;
+  padding: 0.3rem 0.5rem;
+  font-size: var(--text-sm);
 }
 
-.status-state svg {
-  opacity: 0.4;
-}
-
-.status-state p {
-  font-size: 1.1rem;
-  margin: 0;
-}
-
-.spinner {
-  border: 3px solid var(--border-color);
-  border-top: 3px solid var(--primary-color);
-  border-radius: 50%;
-  width: 36px;
-  height: 36px;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* ─── Table ─── */
-
-.table-container {
-  overflow-x: auto;
-}
-
-table {
-  width: 100%;
-  min-width: 700px;
-}
-
-thead th {
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--subtle-text-color);
-  white-space: nowrap;
-  padding: 0.75rem 1rem;
-}
-
-tbody tr {
-  transition: background-color 0.15s ease;
-}
-
-tbody tr:hover {
-  background-color: color-mix(in srgb, var(--primary-color) 5%, transparent);
-}
-
-tbody td {
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border-color);
-  vertical-align: middle;
-}
-
-.action-column {
-  width: 200px;
-}
-
-.date-input {
-  padding: 0.6rem;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.btn-full {
-  width: 100%;
-}
-
-/* ─── Ghost & Small Buttons ─── */
-
-.btn-ghost {
-  background: none;
-  border: 1px solid var(--border-color);
-  color: var(--subtle-text-color);
-  border-radius: 6px;
-  padding: 0.35rem 0.85rem;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition:
-    background-color 0.15s,
-    color 0.15s;
-}
-
-.btn-ghost:hover {
-  background-color: var(--border-color);
-  color: var(--text-color);
-}
-
-.btn-sm {
-  padding: 0.4rem 1rem;
-  font-size: 0.85rem;
+.btn-primary .spinner-sm {
+  border-color: color-mix(in srgb, var(--on-primary) 35%, transparent);
+  border-top-color: var(--on-primary);
 }
 </style>
