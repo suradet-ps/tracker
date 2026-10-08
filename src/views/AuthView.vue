@@ -14,6 +14,7 @@ const message = ref<string>('');
 const messageType = ref<MessageType>('success');
 const isLoading = ref<boolean>(false);
 const showPassword = ref<boolean>(false);
+const loginForm = ref<HTMLFormElement | null>(null);
 const router = useRouter();
 
 const messageIcon = computed(() => (messageType.value === 'error' ? 'alertCircle' : 'checkCircle'));
@@ -21,6 +22,16 @@ const messageIcon = computed(() => (messageType.value === 'error' ? 'alertCircle
 function setMessage(text: string, type: MessageType): void {
   message.value = text;
   messageType.value = type;
+}
+
+/**
+ * Register sits outside the form element, so surface the browser's native
+ * validity feedback before calling `handleRegister`.
+ */
+function handleRegisterClick(): void {
+  if (!loginForm.value?.reportValidity())
+    return;
+  handleRegister();
 }
 
 async function handleLogin(): Promise<void> {
@@ -128,7 +139,7 @@ async function handleRegister(): Promise<void> {
           <span>{{ message }}</span>
         </div>
 
-        <form class="auth-form" @submit.prevent="handleLogin">
+        <form ref="loginForm" class="auth-form" @submit.prevent="handleLogin">
           <div class="form-group">
             <label class="form-label" for="email">อีเมล</label>
             <input
@@ -181,7 +192,7 @@ async function handleRegister(): Promise<void> {
           type="button"
           class="btn btn-ghost btn-block"
           :disabled="isLoading"
-          @click="handleRegister"
+          @click="handleRegisterClick"
         >
           สมัครใช้งานใหม่
         </button>
