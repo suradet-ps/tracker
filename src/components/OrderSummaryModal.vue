@@ -56,6 +56,15 @@ function escapeMarkdownV2(text: string | number | null | undefined): string {
 }
 
 /**
+ * Drops a leading "บริษัท" so the salutation never repeats it: supplier
+ * names in the database usually already carry the prefix.
+ */
+function stripCompanyPrefix(name: string): string {
+  const stripped = name.replace(/^บริษัท\s*/u, '').trim();
+  return stripped || name.trim();
+}
+
+/**
  * Formats a `Date` to a Thai locale date string, then escapes it for MarkdownV2.
  */
 function formatThaiDate(date: Date): string {
@@ -86,7 +95,7 @@ function buildTelegramMessage(
   orders: OrderViewOrder[],
   dateTelegram: string,
 ): string {
-  const safeSupplierName = escapeMarkdownV2(supplierName);
+  const safeSupplierName = escapeMarkdownV2(stripCompanyPrefix(supplierName));
 
   // ── Document title ───────────────────────────
   let message = `*ใบขอสั่งซื้อยา*\n\n`;
@@ -118,7 +127,7 @@ function buildTelegramMessage(
     message += `\n`;
 
     if (packaging)
-      message += `   หน่วยนับ: ${packaging}\n`;
+      message += `   บรรจุภัณฑ์: ${packaging}\n`;
 
     message += `   จำนวน: ${quantity} × ${unit}\n\n`;
   });
