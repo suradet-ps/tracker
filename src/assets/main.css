@@ -83,7 +83,7 @@
   --status-received-fg: var(--teal-600);
   --status-received-bg: #dfeeed;
 
-  /* Signature tints — the sticky-note palette, used for feature/stat tiles */
+  /* Signature tints - the sticky-note palette, used for feature/stat tiles */
   --tint-teal: #dfeeed;
   --tint-teal-ink: var(--teal-600);
   --tint-peach: #fff1e2;
@@ -100,7 +100,7 @@
   --shadow-md: 0 4px 14px rgba(35, 43, 39, 0.09);
   --shadow-lg: 0 16px 40px rgba(35, 43, 39, 0.16);
 
-  /* Shape — buttons and badges are always pill-shaped */
+  /* Shape - buttons and badges are always pill-shaped */
   --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -583,6 +583,19 @@ ol {
   min-height: 30px;
 }
 
+/* Touch-sized icon controls on small screens */
+@media (max-width: 640px) {
+  .btn-icon {
+    width: 42px;
+    min-height: 42px;
+  }
+
+  .btn-icon.btn-sm {
+    width: 36px;
+    min-height: 36px;
+  }
+}
+
 .btn-block {
   width: 100%;
 }
@@ -835,7 +848,7 @@ ol {
   color: var(--tint-teal-ink);
 }
 
-/* Sticky-note tints for metric tiles — pair, never stack, per viewport */
+/* Sticky-note tints for metric tiles - pair, never stack, per viewport */
 .stat-card.tone-peach .stat-icon {
   background-color: var(--tint-peach);
   color: var(--tint-peach-ink);
