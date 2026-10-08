@@ -7,7 +7,6 @@ import { useRouter } from 'vue-router';
 import AppIcon from '@/components/ui/AppIcon.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import StatCard from '@/components/ui/StatCard.vue';
-import TableSkeleton from '@/components/ui/TableSkeleton.vue';
 import { useQuickOrder } from '@/composables/use-quick-order';
 import { useNotificationStore } from '@/stores/notification';
 import { useOrderCountsStore } from '@/stores/order-counts';
@@ -199,18 +198,15 @@ onMounted(fetchCatalog);
     </header>
 
     <!-- Loading -->
-    <template v-if="loading">
-      <div class="stat-grid">
-        <div v-for="card in 3" :key="card" class="stat-card">
-          <span class="skeleton" style="width: 36px; height: 36px; border-radius: 8px;" />
-          <div style="flex: 1;">
-            <span class="skeleton skeleton-line" style="width: 55%;" />
-            <span class="skeleton skeleton-line" style="width: 35%; margin-top: 6px;" />
-          </div>
-        </div>
-      </div>
-      <TableSkeleton :rows="8" :columns="6" />
-    </template>
+    <div v-if="loading" class="state-block" aria-busy="true">
+      <span class="spinner" />
+      <p class="state-title">
+        กำลังโหลดรายการยา...
+      </p>
+      <p class="state-desc">
+        กำลังดึงคลังรายการยาและประวัติการสั่งซื้อล่าสุด
+      </p>
+    </div>
 
     <!-- Error -->
     <EmptyState

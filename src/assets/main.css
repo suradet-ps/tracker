@@ -1051,7 +1051,7 @@ ol {
 }
 
 /* ------------------------------------------------------------
-   14. States (loading / empty / error) & skeletons
+   14. States (loading / empty / error)
    ------------------------------------------------------------ */
 .state-block {
   display: flex;
@@ -1119,41 +1119,6 @@ ol {
   to {
     transform: rotate(360deg);
   }
-}
-
-.skeleton {
-  position: relative;
-  overflow: hidden;
-  background-color: var(--surface-3);
-  border-radius: var(--radius-xs);
-}
-
-.skeleton::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 65%, transparent), transparent);
-  animation: shimmer 1.4s infinite;
-}
-
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.skeleton-line {
-  height: 0.7rem;
-}
-
-.skeleton-table td {
-  padding: 0.9rem 1rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.skeleton-table tr:last-child td {
-  border-bottom: none;
 }
 
 /* ------------------------------------------------------------
