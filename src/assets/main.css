@@ -185,6 +185,9 @@ html.dark {
 html {
   -webkit-text-size-adjust: 100%;
   scroll-behavior: smooth;
+  /* Keep the layout width steady when the page height crosses the
+     scrollbar threshold (loading state ⇄ table). */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -1065,6 +1068,8 @@ ol {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   color: var(--text-3);
+  /* Fade in late enough that fast loads never flash a spinner. */
+  animation: fade-in 0.18s ease 0.08s both;
 }
 
 .state-block .state-icon {

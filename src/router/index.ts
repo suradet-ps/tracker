@@ -55,6 +55,12 @@ const routes: readonly RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes: [...routes],
+  // Every screen starts at the top; back/forward restores the previous spot.
+  // `behavior: 'instant'` overrides the global smooth scrolling so a route
+  // change never animates a long scroll across the freshly mounted page.
+  scrollBehavior(_to, _from, savedPosition) {
+    return savedPosition ?? { top: 0, behavior: 'instant' };
+  },
 });
 
 // Navigation guard — redirects unauthenticated users to Auth,

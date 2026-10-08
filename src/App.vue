@@ -158,19 +158,13 @@ onUnmounted(() => {
   flex-grow: 1;
 }
 
-.page-enter-active,
-.page-leave-active {
-  transition:
-    opacity 0.16s ease,
-    transform 0.16s ease;
+/* Navigation stays snappy: the old screen leaves immediately and the new
+   one settles in with a short fade — no vertical movement, no blank gap. */
+.page-enter-active {
+  transition: opacity 0.12s ease;
 }
 
 .page-enter-from {
-  opacity: 0;
-  transform: translateY(6px);
-}
-
-.page-leave-to {
   opacity: 0;
 }
 
