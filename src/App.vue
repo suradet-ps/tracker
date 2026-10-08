@@ -150,7 +150,7 @@ onUnmounted(() => {
 
 .topbar-title {
   font-size: var(--text-lg);
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 

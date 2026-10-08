@@ -330,8 +330,8 @@ onMounted(fetchOrdersToBuy);
       <!-- Queue metrics -->
       <div class="stat-grid">
         <StatCard label="รายการค้างสั่ง" :value="orders.length" hint="รอสร้างใบสั่งซื้อ" icon="clipboardList" />
-        <StatCard label="มูลค่ารวม" :value="`฿${formatMoney(totalAmount)}`" hint="จากราคาประเมินล่าสุด" icon="package" />
-        <StatCard label="บริษัทผู้จำหน่าย" :value="supplierNames.length" hint="ในรายการค้างสั่ง" icon="building" />
+        <StatCard label="มูลค่ารวม" :value="`฿${formatMoney(totalAmount)}`" hint="จากราคาประเมินล่าสุด" icon="package" tone="peach" />
+        <StatCard label="บริษัทผู้จำหน่าย" :value="supplierNames.length" hint="ในรายการค้างสั่ง" icon="building" tone="sand" />
       </div>
 
       <!-- Toolbar -->

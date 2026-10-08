@@ -226,7 +226,7 @@ async function handleRegister(): Promise<void> {
 
 .brand-word {
   font-size: 1.5rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 

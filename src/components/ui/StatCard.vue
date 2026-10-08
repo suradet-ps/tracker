@@ -12,14 +12,17 @@ withDefaults(defineProps<{
   hint?: string;
   /** Optional leading icon. */
   icon?: IconName;
+  /** Sticky-note tint for the icon tile. */
+  tone?: 'teal' | 'peach' | 'sand' | 'mint';
 }>(), {
   hint: '',
   icon: undefined,
+  tone: 'teal',
 });
 </script>
 
 <template>
-  <div class="stat-card">
+  <div class="stat-card" :class="`tone-${tone}`">
     <span v-if="icon" class="stat-icon">
       <AppIcon :name="icon" :size="18" />
     </span>

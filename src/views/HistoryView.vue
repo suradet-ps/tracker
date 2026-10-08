@@ -270,9 +270,9 @@ onMounted(fetchHistory);
       <!-- Metrics -->
       <div class="stat-grid">
         <StatCard label="รายการทั้งหมด" :value="statusCounts.all" hint="ทุกสถานะ" icon="list" />
-        <StatCard label="ต้องสั่งซื้อ" :value="statusCounts['ต้องสั่งซื้อ']" hint="รอสร้างใบสั่งซื้อ" icon="clipboardList" />
-        <StatCard label="สั่งแล้ว" :value="statusCounts['สั่งแล้ว']" hint="รอรับของ" icon="truck" />
-        <StatCard label="รับของแล้ว" :value="statusCounts['รับของแล้ว']" hint="ปิดรายการแล้ว" icon="checkCircle" />
+        <StatCard label="ต้องสั่งซื้อ" :value="statusCounts['ต้องสั่งซื้อ']" hint="รอสร้างใบสั่งซื้อ" icon="clipboardList" tone="peach" />
+        <StatCard label="สั่งแล้ว" :value="statusCounts['สั่งแล้ว']" hint="รอรับของ" icon="truck" tone="sand" />
+        <StatCard label="รับของแล้ว" :value="statusCounts['รับของแล้ว']" hint="ปิดรายการแล้ว" icon="checkCircle" tone="mint" />
       </div>
 
       <!-- Toolbar -->

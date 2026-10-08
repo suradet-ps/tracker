@@ -251,8 +251,8 @@ onMounted(fetchOrdersToReceive);
       <!-- Queue metrics -->
       <div class="stat-grid">
         <StatCard label="รอรับของ" :value="orders.length" hint="รายการที่สั่งแล้ว" icon="truck" />
-        <StatCard label="บริษัทผู้จำหน่าย" :value="supplierNames.length" hint="ในคิวรอรับ" icon="building" />
-        <StatCard label="สั่งซื้อเก่าสุด" :value="oldestOrderDate" hint="ควรรีบติดตาม" icon="clock" />
+        <StatCard label="บริษัทผู้จำหน่าย" :value="supplierNames.length" hint="ในคิวรอรับ" icon="building" tone="sand" />
+        <StatCard label="สั่งซื้อเก่าสุด" :value="oldestOrderDate" hint="ควรรีบติดตาม" icon="clock" tone="peach" />
       </div>
 
       <!-- Toolbar -->

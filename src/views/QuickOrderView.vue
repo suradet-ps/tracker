@@ -233,9 +233,9 @@ onMounted(fetchCatalog);
     <template v-else>
       <!-- Selection metrics -->
       <div class="stat-grid">
-        <StatCard label="ยาในคลัง" :value="draftItems.length" hint="รายการทั้งหมด" icon="pill" />
+        <StatCard label="ยาในคลัง" :value="draftItems.length" hint="รายการทั้งหมด" icon="pill" tone="mint" />
         <StatCard label="เลือกแล้ว" :value="selectedCount" hint="รายการในใบสั่งซื้อนี้" icon="checkCircle" />
-        <StatCard label="ประมาณการรวม" :value="`฿${formatMoney(selectedTotal)}`" hint="จากจำนวน × ราคาต่อหน่วย" icon="package" />
+        <StatCard label="ประมาณการรวม" :value="`฿${formatMoney(selectedTotal)}`" hint="จากจำนวน × ราคาต่อหน่วย" icon="package" tone="peach" />
       </div>
 
       <!-- Toolbar -->
