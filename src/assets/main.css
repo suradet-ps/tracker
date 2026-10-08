@@ -917,7 +917,8 @@ ol {
    13. Data tables
    ------------------------------------------------------------ */
 .table-wrap {
-  overflow-x: auto;
+  overflow: auto;
+  max-height: min(68vh, 760px);
   background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);

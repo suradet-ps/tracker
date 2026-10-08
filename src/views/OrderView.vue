@@ -458,7 +458,14 @@ onMounted(fetchOrdersToBuy);
     </template>
 
     <!-- Bulk action bar -->
-    <div class="floating-bar" :class="{ 'is-visible': selectedCount > 0 }" role="region" aria-label="การจัดการรายการที่เลือก">
+    <div
+      class="floating-bar"
+      :class="{ 'is-visible': selectedCount > 0 }"
+      :inert="selectedCount === 0 ? true : undefined"
+      :aria-hidden="selectedCount === 0"
+      role="region"
+      aria-label="การจัดการรายการที่เลือก"
+    >
       <span class="bar-label">เลือกแล้ว</span>
       <span class="bar-count">{{ selectedCount }}</span>
       <span class="bar-label">รายการ</span>

@@ -341,6 +341,7 @@ onMounted(fetchOrdersToReceive);
                     v-model="order.received_date_input"
                     type="date"
                     class="form-input form-input-sm"
+                    :max="todayIso()"
                     :aria-label="`วันที่รับของ ${order.drugs.name}`"
                   >
                   <button
