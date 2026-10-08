@@ -135,6 +135,15 @@ function buildTelegramMessage(
 // Core action
 // ─────────────────────────────────────────────
 
+/**
+ * Ignore dismissal requests (Escape, backdrop, close button) while the
+ * send is in flight: unmounting mid-flight would strand the result.
+ */
+function handleClose(): void {
+  if (!isSending.value)
+    emit('close');
+}
+
 async function confirmAndSend(): Promise<void> {
   isSending.value = true;
   error.value = null;
@@ -215,7 +224,7 @@ async function confirmAndSend(): Promise<void> {
 </script>
 
 <template>
-  <AppModal title="สรุปรายการสั่งซื้อ" size="lg" @close="emit('close')">
+  <AppModal title="สรุปรายการสั่งซื้อ" size="lg" @close="handleClose">
     <!-- Sending -->
     <div v-if="isSending" class="sending-state">
       <span class="spinner" />
