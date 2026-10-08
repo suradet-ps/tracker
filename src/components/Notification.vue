@@ -1,72 +1,71 @@
 <!-- src/components/Notification.vue -->
 <script setup lang="ts">
+import type { IconName } from '@/components/ui/icons';
+
+import { computed } from 'vue';
+import AppIcon from '@/components/ui/AppIcon.vue';
 import { useNotificationStore } from '@/stores/notification';
 
 const notificationStore = useNotificationStore();
+
+const iconName = computed<IconName>(() => {
+  switch (notificationStore.type) {
+    case 'error':
+      return 'alertCircle';
+    case 'info':
+      return 'info';
+    case 'success':
+    default:
+      return 'checkCircle';
+  }
+});
+
+/** Errors interrupt; everything else waits its turn. */
+const isAssertive = computed<boolean>(() => notificationStore.type === 'error');
 </script>
 
 <template>
-  <Transition name="toast">
-    <div v-if="notificationStore.isVisible" class="notification" :class="notificationStore.type">
-      {{ notificationStore.message }}
-      <button class="close-btn" aria-label="Close notification" @click="notificationStore.hideNotification()">
-        &times;
-      </button>
-    </div>
-  </Transition>
+  <div
+    class="toast-region"
+    :role="isAssertive ? 'alert' : 'status'"
+    :aria-live="isAssertive ? 'assertive' : 'polite'"
+  >
+    <Transition name="toast">
+      <div
+        v-if="notificationStore.isVisible"
+        class="toast"
+        :class="`toast-${notificationStore.type}`"
+      >
+        <AppIcon :name="iconName" :size="18" />
+        <div class="toast-body">
+          <p class="toast-message">
+            {{ notificationStore.message }}
+          </p>
+        </div>
+        <button
+          type="button"
+          class="btn btn-subtle btn-icon btn-sm"
+          aria-label="ปิดการแจ้งเตือน"
+          @click="notificationStore.hideNotification()"
+        >
+          <AppIcon name="x" :size="15" />
+        </button>
+      </div>
+    </Transition>
+  </div>
 </template>
 
 <style scoped>
-.notification {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 1rem 2rem;
-  border-radius: 8px;
-  color: var(--primary-text-color);
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  z-index: 9999;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-  border: 1px solid transparent;
-}
-
-.notification.success {
-  background-color: var(--status-received-bg);
-  border-color: #ffffff55;
-}
-
-.notification.error {
-  background-color: var(--status-pending-bg);
-  border-color: #ffffff55;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: var(--primary-text-color);
-  font-size: 1.5rem;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0.7;
-  transition: opacity 0.2s;
-}
-
-.close-btn:hover {
-  opacity: 1;
-}
-
-/* Vue Transition styles */
 .toast-enter-active,
 .toast-leave-active {
-  transition: all 0.5s ease;
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
 }
 
 .toast-enter-from,
 .toast-leave-to {
   opacity: 0;
-  transform: translate(-50%, 20px);
+  transform: translateY(-8px);
 }
 </style>

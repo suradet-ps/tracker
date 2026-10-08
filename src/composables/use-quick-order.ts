@@ -128,7 +128,7 @@ export function useQuickOrder() {
         };
       });
 
-      // Initialise editable draft items — pre-filled from last order context
+      // Initialise editable draft items - pre-filled from last order context
       draftItems.value = catalogEntries.map((entry): QuickOrderDraftItem => ({
         drug: entry,
         isSelected: false,

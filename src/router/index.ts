@@ -14,6 +14,8 @@ declare module 'vue-router' {
   // eslint-disable-next-line ts/consistent-type-definitions
   interface RouteMeta {
     requiresAuth?: boolean;
+    /** Document title for the route, rendered as `<title> · Tracker`. */
+    title?: string;
   }
 }
 
@@ -22,39 +24,46 @@ const routes: readonly RouteRecordRaw[] = [
     path: '/auth',
     name: 'Auth',
     component: AuthView,
+    meta: { title: 'เข้าสู่ระบบ' },
   },
   {
     path: '/quick-order',
     name: 'QuickOrder',
     component: QuickOrderView,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, title: 'สร้างใบสั่งซื้อด่วน' },
   },
   {
     path: '/',
     name: 'Order',
     component: OrderView,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, title: 'รายการต้องสั่งซื้อ' },
   },
   {
     path: '/to-receive',
     name: 'Receive',
     component: ReceiveView,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, title: 'รายการรอรับของ' },
   },
   {
     path: '/history',
     name: 'History',
     component: HistoryView,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, title: 'ประวัติการสั่งซื้อ' },
   },
 ];
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [...routes],
+  // Every screen starts at the top; back/forward restores the previous spot.
+  // `behavior: 'instant'` overrides the global smooth scrolling so a route
+  // change never animates a long scroll across the freshly mounted page.
+  scrollBehavior(_to, _from, savedPosition) {
+    return savedPosition ?? { top: 0, behavior: 'instant' };
+  },
 });
 
-// Navigation guard — redirects unauthenticated users to Auth,
+// Navigation guard - redirects unauthenticated users to Auth,
 // and authenticated users away from the Auth page.
 router.beforeEach(async (to, _from, next) => {
   let session = null;
@@ -78,6 +87,12 @@ router.beforeEach(async (to, _from, next) => {
   else {
     next();
   }
+});
+
+// Keep the browser tab in sync with the active screen.
+router.afterEach((to) => {
+  const title = to.meta.title;
+  document.title = title ? `${title} · Tracker` : 'Tracker';
 });
 
 export default router;

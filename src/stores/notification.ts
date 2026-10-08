@@ -4,8 +4,14 @@ import type { NotificationPayload, NotificationType } from '@/types/database';
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-const NOTIFICATION_DURATION_MS = 3_000;
-const TRANSITION_DURATION_MS = 500;
+/** How long each toast stays on screen before auto-hiding. */
+const AUTO_HIDE_MS: Record<NotificationType, number> = {
+  success: 3_500,
+  info: 4_500,
+  error: 6_000,
+};
+
+const TRANSITION_DURATION_MS = 250;
 
 export const useNotificationStore = defineStore('notification', () => {
   const message = ref<string>('');
@@ -35,7 +41,7 @@ export const useNotificationStore = defineStore('notification', () => {
 
     autoHideTimer = setTimeout(() => {
       hideNotification();
-    }, NOTIFICATION_DURATION_MS);
+    }, AUTO_HIDE_MS[type.value]);
   }
 
   function hideNotification(): void {

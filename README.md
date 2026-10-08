@@ -20,8 +20,9 @@ it is placed. Procurement becomes a visible thread: statuses, timestamps,
 and a complete history for the audit. The team is told; the record is
 kept.
 
-| CSV ▣ | Orders ▣ | Telegram ▣ | History ▣ |
-| ----- | -------- | ---------- | --------- |
+| CSV         | Orders          | Telegram       | History        |
+| ----------- | --------------- | -------------- | -------------- |
+| bulk import | status workflow | instant alerts | full audit log |
 
 _The procurement loop - import, order, notify, confirm, audit - is
 sealed._
@@ -52,9 +53,11 @@ Copy `.env.example` to `.env` and fill the credentials:
 ```
 VITE_SUPABASE_URL="YOUR_SUPABASE_PROJECT_URL"
 VITE_SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_KEY"
-VITE_TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
-VITE_TELEGRAM_CHAT_ID="YOUR_TELEGRAM_CHAT_ID"
 ```
+
+The Telegram bot token and chat id are Supabase Edge Function secrets,
+not Vite variables - set them with
+`supabase secrets set TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...`.
 
 Requires Node `^20.19.0` or `>=22.12.0` (per `package.json`), a Supabase
 project, and a Telegram bot with its chat id.
@@ -121,9 +124,9 @@ history  ▸ full log with statuses and timestamps ─────────�
 ```
 
 **Raising the artifact** - the quality bar is ESLint and the local
-build; the [CI workflow](.github/workflows) gates every push. Supabase
-schema and edge functions live under `supabase/`. Open an issue first to
-discuss a change.
+build; the [CI workflow](.github/workflows) gates every push. The
+interface rules live in [DESIGN.md](DESIGN.md); Supabase schema and edge
+functions live under `supabase/`. Open an issue first to discuss a change.
 
 **Status** - every push runs the [CI gate](.github/workflows/ci.yml) on
 the way to Firebase Hosting.

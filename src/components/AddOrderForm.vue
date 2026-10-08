@@ -3,6 +3,8 @@
 import type { AddOrderFormData, DrugRow, ImportBatchRow, PurchaseOrderInsert, SupplierRow } from '@/types/database';
 
 import { reactive, ref } from 'vue';
+import AppIcon from '@/components/ui/AppIcon.vue';
+import AppModal from '@/components/ui/AppModal.vue';
 import { supabase } from '@/supabase/client';
 
 const emit = defineEmits<{
@@ -123,90 +125,94 @@ async function handleSubmit(): Promise<void> {
 </script>
 
 <template>
-  <div class="card add-form-card">
-    <h3>เพิ่มรายการสั่งซื้อด้วยตนเอง</h3>
-    <form @submit.prevent="handleSubmit">
+  <AppModal title="เพิ่มรายการสั่งซื้อด้วยตนเอง" size="md" @close="emit('close')">
+    <form id="add-order-form" class="add-form" @submit.prevent="handleSubmit">
+      <p class="form-note">
+        บันทึกในสถานะ <strong>ต้องสั่งซื้อ</strong> - เลือกรายการนี้ในหน้ารายการเพื่อสร้างใบสั่งซื้อได้ทันที
+      </p>
+
       <div class="form-grid">
         <div class="form-group">
-          <label for="drugName">ชื่อยา</label>
+          <label class="form-label" for="drugName">ชื่อยา <span class="required">*</span></label>
           <input id="drugName" v-model="form.drugName" type="text" class="form-input" required>
         </div>
+
         <div class="form-group">
-          <label for="supplierName">บริษัท</label>
+          <label class="form-label" for="supplierName">บริษัท <span class="required">*</span></label>
           <input id="supplierName" v-model="form.supplierName" type="text" class="form-input" required>
         </div>
+
         <div class="form-group">
-          <label for="form">รูปแบบยา</label>
+          <label class="form-label" for="form">รูปแบบยา</label>
           <input id="form" v-model="form.form" type="text" class="form-input" placeholder="เช่น tab, inj">
         </div>
+
         <div class="form-group">
-          <label for="strength">ความแรง</label>
+          <label class="form-label" for="strength">ความแรง</label>
           <input id="strength" v-model="form.strength" type="text" class="form-input" placeholder="เช่น 500 mg">
         </div>
+
         <div class="form-group">
-          <label for="quantity">จำนวน</label>
+          <label class="form-label" for="quantity">จำนวน <span class="required">*</span></label>
           <input id="quantity" v-model.number="form.quantity" type="number" min="1" class="form-input" required>
         </div>
+
         <div class="form-group">
-          <label for="unitCount">หน่วยนับ</label>
-          <input
-            id="unitCount" v-model="form.unitCount" type="text" class="form-input" required
-            placeholder="เช่น 1, 100"
-          >
+          <label class="form-label" for="unitCount">หน่วยนับ <span class="required">*</span></label>
+          <input id="unitCount" v-model="form.unitCount" type="text" class="form-input" required placeholder="เช่น กล่อง, แผง">
         </div>
+
         <div class="form-group">
-          <label for="pricePerUnit">ราคาต่อหน่วย</label>
+          <label class="form-label" for="pricePerUnit">ราคาต่อหน่วย (บาท) <span class="required">*</span></label>
           <input
             id="pricePerUnit" v-model.number="form.pricePerUnit" type="number" min="0.01" step="0.01"
             class="form-input" required
           >
         </div>
       </div>
-      <div v-if="error" class="error-message">
-        {{ error }}
-      </div>
-      <div class="button-container">
-        <button type="button" class="btn btn-secondary" @click="emit('close')">
-          ยกเลิก
-        </button>
-        <button type="submit" class="btn btn-primary" :disabled="isLoading">
-          {{ isLoading ? 'กำลังบันทึก...' : 'เพิ่มรายการ' }}
-        </button>
+
+      <div v-if="error" class="alert alert-error" role="alert">
+        <AppIcon name="alertCircle" :size="17" />
+        <span>{{ error }}</span>
       </div>
     </form>
-  </div>
+
+    <template #footer>
+      <button type="button" class="btn btn-ghost" :disabled="isLoading" @click="emit('close')">
+        ยกเลิก
+      </button>
+      <button type="submit" form="add-order-form" class="btn btn-primary" :disabled="isLoading">
+        <span v-if="isLoading" class="spinner spinner-sm" />
+        {{ isLoading ? 'กำลังบันทึก...' : 'เพิ่มรายการ' }}
+      </button>
+    </template>
+  </AppModal>
 </template>
 
 <style scoped>
-.add-form-card {
-  margin-bottom: 2rem;
-  border: 1px solid var(--primary-color);
+.add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.form-note {
+  color: var(--text-3);
+  font-size: var(--text-sm);
 }
 
 .form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 0.9rem 1rem;
 }
 
-.form-group label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 500;
-  font-size: 0.9rem;
+.required {
+  color: var(--danger);
 }
 
-.error-message {
-  color: var(--status-pending-bg);
-  margin-bottom: 1rem;
-  text-align: center;
-}
-
-.button-container {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 1rem;
+.btn-primary .spinner-sm {
+  border-color: color-mix(in srgb, var(--on-primary) 35%, transparent);
+  border-top-color: var(--on-primary);
 }
 </style>

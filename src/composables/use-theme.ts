@@ -6,7 +6,7 @@ const THEME_STORAGE_KEY = 'theme' as const;
 const DARK_CLASS = 'dark' as const;
 
 type UseThemeReturn = {
-  /** Reactive flag — `true` when dark mode is active. */
+  /** Reactive flag - `true` when dark mode is active. */
   isDark: Ref<boolean>;
   /** Toggle between light and dark mode. */
   toggleTheme: () => void;
