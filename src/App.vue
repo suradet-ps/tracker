@@ -33,6 +33,11 @@ watch(() => route.fullPath, () => {
   sidebarOpen.value = false;
 });
 
+// Lock background scroll while the mobile drawer is open.
+watch(sidebarOpen, (open: boolean) => {
+  document.body.style.overflow = open ? 'hidden' : '';
+});
+
 onMounted(() => {
   supabase.auth.getSession()
     .then(({ data }) => {

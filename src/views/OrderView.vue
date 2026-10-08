@@ -174,6 +174,11 @@ async function fetchOrdersToBuy(): Promise<void> {
     selectedOrderIds.value = new Set(
       [...selectedOrderIds.value].filter(id => currentIds.has(id)),
     );
+
+    // Never leave the supplier filter pointing at a name that no longer exists.
+    if (supplierFilter.value && !supplierNames.value.includes(supplierFilter.value)) {
+      supplierFilter.value = '';
+    }
   }
   catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';

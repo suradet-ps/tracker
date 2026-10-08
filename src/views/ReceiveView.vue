@@ -122,6 +122,11 @@ async function fetchOrdersToReceive(): Promise<void> {
       throw dbError;
 
     orders.value = ((data ?? []) as unknown as ReceiveViewOrder[]).map(toReceivableOrder);
+
+    // Never leave the supplier filter pointing at a name that no longer exists.
+    if (supplierFilter.value && !supplierNames.value.includes(supplierFilter.value)) {
+      supplierFilter.value = '';
+    }
   }
   catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
