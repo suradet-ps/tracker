@@ -64,8 +64,10 @@ project, and a Telegram bot with its chat id.
 
 </details>
 
-Deploy: `⟫ npm run build` then `⟫ firebase deploy` (the `firebase.json`
-rewrites already serve the SPA from `dist/`).
+Deploy: `⟫ npm run build` then either `⟫ firebase deploy` (the
+`firebase.json` rewrites serve the SPA from `dist/`) or push to Vercel
+(the `vercel.json` rewrites provide the same SPA fallback for deep links
+such as `/to-receive`).
 
 ---
 
