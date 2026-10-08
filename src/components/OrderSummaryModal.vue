@@ -1,9 +1,12 @@
 <!-- src/components/OrderSummaryModal.vue -->
 <script setup lang="ts">
-import type { GroupedOrders, OrderViewOrder } from '@/types/database';
+import type { GroupedOrders, OrderViewOrder, SupplierOrderGroup } from '@/types/database';
 
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import AppIcon from '@/components/ui/AppIcon.vue';
+import AppModal from '@/components/ui/AppModal.vue';
 import { supabase } from '@/supabase/client';
+import { formatMoney, formatQuantity } from '@/utils/number';
 
 // ─────────────────────────────────────────────
 // Props & Emits
@@ -24,6 +27,19 @@ const emit = defineEmits<{
 
 const isSending = ref<boolean>(false);
 const error = ref<string | null>(null);
+
+// ─────────────────────────────────────────────
+// Totals
+// ─────────────────────────────────────────────
+
+function groupTotal(group: SupplierOrderGroup): number {
+  return group.orders.reduce((sum, order) => sum + (order.total_price ?? 0), 0);
+}
+
+const grandTotal = computed<number>(() =>
+  Object.values(props.groupedOrders)
+    .reduce((sum, group) => sum + groupTotal(group), 0),
+);
 
 // ─────────────────────────────────────────────
 // Telegram MarkdownV2 helpers
@@ -199,190 +215,229 @@ async function confirmAndSend(): Promise<void> {
 </script>
 
 <template>
-  <div class="modal-backdrop" @click.self="emit('close')">
-    <div class="modal-content card">
-      <header class="modal-header">
-        <h2>สรุปรายการสั่งซื้อ</h2>
-        <button class="close-button" aria-label="ปิด" @click="emit('close')">
-          &times;
-        </button>
-      </header>
+  <AppModal title="สรุปรายการสั่งซื้อ" size="lg" @close="emit('close')">
+    <!-- Sending -->
+    <div v-if="isSending" class="sending-state">
+      <span class="spinner" />
+      <p class="sending-title">
+        กำลังส่งคำสั่งซื้อ...
+      </p>
+      <p class="sending-desc">
+        ระบบกำลังแจ้งเตือนผ่าน Telegram และอัปเดตสถานะ กรุณาอย่าปิดหน้าต่างนี้
+      </p>
+    </div>
 
-      <div v-if="isSending" class="sending-state">
-        <div class="spinner" />
-        <p>กำลังส่งคำสั่งซื้อและแจ้งเตือนผ่าน Telegram...</p>
-      </div>
+    <!-- Review -->
+    <template v-else>
+      <p class="modal-note">
+        <AppIcon name="send" :size="15" />
+        เมื่อยืนยัน ระบบจะส่งข้อความถึงบริษัทผ่าน Telegram และเปลี่ยนสถานะเป็น
+        <strong>สั่งแล้ว</strong> ทันที
+      </p>
 
-      <div v-else class="order-summary-list">
-        <div v-for="(group, supplierName) in groupedOrders" :key="supplierName" class="supplier-group">
-          <h4>
-            เรียน บริษัท <strong>{{ supplierName }}</strong>
-          </h4>
-          <p class="order-request-text">
-            โรงพยาบาลสระโบสถ์ ขอความอนุเคราะห์ในการจัดซื้อยาตามรายการต่อไปนี้:
-          </p>
-          <ul>
+      <div class="supplier-list">
+        <section v-for="(group, supplierName) in groupedOrders" :key="supplierName" class="supplier-group">
+          <header class="group-head">
+            <span class="group-name">
+              <AppIcon name="building" :size="15" />
+              {{ supplierName }}
+            </span>
+            <span class="group-meta">
+              {{ group.orders.length }} รายการ · ฿{{ formatMoney(groupTotal(group)) }}
+            </span>
+          </header>
+
+          <ul class="group-list">
             <li v-for="order in group.orders" :key="order.id">
-              <span>
-                {{ order.drugs.name }}
-                <template v-if="order.drugs.form"> [{{ order.drugs.form }}]</template>
-                <template v-if="order.drugs.strength"> ({{ order.drugs.strength }})</template>
-                <template v-if="order.packaging"> / {{ order.packaging }}</template>
-              </span>
-              <span>จำนวน {{ order.quantity }} × {{ order.unit_count }}</span>
+              <div class="line-main">
+                <span class="line-name">
+                  {{ order.drugs.name }}
+                  <span class="line-meta">
+                    <template v-if="order.drugs.form"> [{{ order.drugs.form }}]</template>
+                    <template v-if="order.drugs.strength"> ({{ order.drugs.strength }})</template>
+                    <template v-if="order.packaging"> · {{ order.packaging }}</template>
+                  </span>
+                </span>
+                <span class="line-qty">
+                  จำนวน {{ formatQuantity(order.quantity) }} × {{ order.unit_count }}
+                </span>
+              </div>
+              <span class="line-total">฿{{ formatMoney(order.total_price) }}</span>
             </li>
           </ul>
-        </div>
+        </section>
       </div>
 
-      <div v-if="error" class="error-message">
-        <strong>เกิดข้อผิดพลาด:</strong> {{ error }}
+      <div class="grand-total">
+        <span>รวมทั้งสิ้น</span>
+        <strong>฿{{ formatMoney(grandTotal) }}</strong>
       </div>
 
-      <footer class="modal-footer">
-        <button class="btn btn-secondary" :disabled="isSending" @click="emit('close')">
-          ยกเลิก
-        </button>
-        <button
-          class="btn btn-primary"
-          :disabled="isSending || Object.keys(groupedOrders).length === 0"
-          @click="confirmAndSend"
-        >
-          {{ isSending ? 'กำลังส่ง...' : 'ยืนยันและส่งคำสั่งซื้อ' }}
-        </button>
-      </footer>
-    </div>
-  </div>
+      <div v-if="error" class="alert alert-error" role="alert">
+        <AppIcon name="alertCircle" :size="17" />
+        <span><strong>เกิดข้อผิดพลาด:</strong> {{ error }}</span>
+      </div>
+    </template>
+
+    <template #footer>
+      <button type="button" class="btn btn-ghost" :disabled="isSending" @click="emit('close')">
+        ยกเลิก
+      </button>
+      <button
+        type="button"
+        class="btn btn-primary"
+        :disabled="isSending || Object.keys(groupedOrders).length === 0"
+        @click="confirmAndSend"
+      >
+        <span v-if="isSending" class="spinner spinner-sm" />
+        <AppIcon v-else name="send" :size="15" />
+        {{ isSending ? 'กำลังส่ง...' : 'ยืนยันและส่งคำสั่งซื้อ' }}
+      </button>
+    </template>
+  </AppModal>
 </template>
 
 <style scoped>
-.modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.6);
+.modal-note {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-  padding: 1rem;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--text-sm);
 }
 
-.modal-content {
-  width: 100%;
-  max-width: 700px;
-  max-height: 90vh;
+.modal-note .icon {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: var(--primary);
+}
+
+.supplier-list {
   display: flex;
   flex-direction: column;
+  gap: 1.1rem;
 }
 
-.modal-header {
+.group-head {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
   align-items: center;
-  border-bottom: 1px solid var(--border-color);
-  padding-bottom: 1rem;
-  margin-bottom: 1rem;
-  flex-shrink: 0;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-bottom: 0.5rem;
 }
 
-.close-button {
-  background: none;
-  border: none;
-  font-size: 2rem;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--subtle-text-color);
+.group-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-weight: 600;
 }
 
-.order-summary-list {
-  overflow-y: auto;
-  flex-grow: 1;
+.group-name .icon {
+  color: var(--text-3);
 }
 
-.supplier-group {
-  margin-bottom: 2rem;
+.group-meta {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
 }
 
-.supplier-group h4 {
-  background-color: var(--bg-color);
-  padding: 0.5rem 1rem;
-  border-radius: 6px;
-  margin: 0 0 0.5rem 0;
-}
-
-.order-request-text {
-  color: var(--subtle-text-color);
-  font-size: 0.9rem;
-  margin: 0.5rem 0;
-}
-
-.supplier-group ul {
+.group-list {
   list-style: none;
-  padding: 0;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
-.supplier-group li {
+.group-list li {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--border-color);
+  gap: 1rem;
+  padding: 0.65rem 0.9rem;
+  border-bottom: 1px solid var(--border);
 }
 
-.supplier-group li:last-child {
+.group-list li:last-child {
   border-bottom: none;
 }
 
-.modal-footer {
+.group-list li:nth-child(even) {
+  background-color: var(--surface-2);
+}
+
+.line-main {
   display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid var(--border-color);
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.line-name {
+  font-weight: 500;
+}
+
+.line-meta {
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.line-qty {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.line-total {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.grand-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 1.1rem;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-md);
+  background-color: var(--primary-soft);
+  color: var(--primary);
+}
+
+.grand-total strong {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
 }
 
 .sending-state {
-  text-align: center;
-  padding: 3rem 1rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1rem;
+  gap: 0.75rem;
+  padding: 3rem 1rem;
+  text-align: center;
 }
 
-.spinner {
-  border: 4px solid var(--border-color);
-  border-top: 4px solid var(--primary-color);
-  border-radius: 50%;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
+.sending-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
 }
 
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-
-  100% {
-    transform: rotate(360deg);
-  }
+.sending-desc {
+  max-width: 34ch;
+  color: var(--text-3);
+  font-size: var(--text-sm);
 }
 
-.error-message {
-  color: var(--status-pending-bg);
-  background-color: color-mix(in srgb, var(--status-pending-bg) 20%, transparent);
-  border: 1px solid var(--status-pending-bg);
-  padding: 1rem;
-  border-radius: 8px;
-  margin-top: 1rem;
-  word-break: break-word;
+.btn-primary .spinner-sm {
+  border-color: color-mix(in srgb, var(--on-primary) 35%, transparent);
+  border-top-color: var(--on-primary);
 }
 </style>
