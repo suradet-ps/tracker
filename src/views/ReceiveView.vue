@@ -444,23 +444,24 @@ onMounted(fetchOrdersToReceive);
                 <div class="row-actions">
                   <button
                     type="button"
-                    class="btn btn-danger-soft btn-sm"
+                    class="btn btn-danger-soft btn-icon btn-sm"
                     :disabled="order.isSaving || isCancelling"
+                    :title="`ยกเลิกรายการ ${order.drugs.name}`"
                     :aria-label="`ยกเลิกรายการ ${order.drugs.name}`"
                     @click="requestCancel(order)"
                   >
                     <AppIcon name="x" :size="15" />
-                    ยกเลิก
                   </button>
                   <button
                     type="button"
-                    class="btn btn-primary btn-sm"
+                    class="btn btn-primary btn-icon btn-sm"
                     :disabled="!order.received_date_input || order.isSaving"
+                    :title="`บันทึกการรับของ ${order.drugs.name}`"
+                    :aria-label="`บันทึกการรับของ ${order.drugs.name}`"
                     @click="markAsReceived(order)"
                   >
                     <span v-if="order.isSaving" class="spinner spinner-sm" />
                     <AppIcon v-else name="check" :size="15" />
-                    {{ order.isSaving ? 'กำลังบันทึก...' : 'บันทึก' }}
                   </button>
                 </div>
               </td>

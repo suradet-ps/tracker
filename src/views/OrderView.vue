@@ -576,13 +576,13 @@ onMounted(fetchOrdersToBuy);
               <td class="col-actions">
                 <button
                   type="button"
-                  class="btn btn-danger-soft btn-sm"
+                  class="btn btn-danger-soft btn-icon btn-sm"
                   :disabled="isCancelling"
+                  :title="`ยกเลิกรายการ ${order.drugs.name}`"
                   :aria-label="`ยกเลิกรายการ ${order.drugs.name}`"
                   @click="requestCancel(order)"
                 >
                   <AppIcon name="x" :size="15" />
-                  ยกเลิก
                 </button>
               </td>
             </tr>
