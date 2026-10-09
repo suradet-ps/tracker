@@ -82,6 +82,8 @@
   --status-ordered-bg: #f7efdf;
   --status-received-fg: var(--teal-600);
   --status-received-bg: #dfeeed;
+  --status-cancelled-fg: #5f6b67;
+  --status-cancelled-bg: #e9edec;
 
   /* Signature tints - the sticky-note palette, used for feature/stat tiles */
   --tint-teal: #dfeeed;
@@ -175,6 +177,8 @@ html.dark {
   --status-ordered-bg: rgba(217, 176, 140, 0.18);
   --status-received-fg: #7fd0c3;
   --status-received-bg: rgba(17, 100, 102, 0.38);
+  --status-cancelled-fg: #aab9b4;
+  --status-cancelled-bg: rgba(170, 185, 180, 0.16);
 
   --tint-teal: rgba(17, 100, 102, 0.35);
   --tint-teal-ink: #7fd0c3;
@@ -814,6 +818,11 @@ ol {
 .status-received {
   background-color: var(--status-received-bg);
   color: var(--status-received-fg);
+}
+
+.status-cancelled {
+  background-color: var(--status-cancelled-bg);
+  color: var(--status-cancelled-fg);
 }
 
 /* ------------------------------------------------------------

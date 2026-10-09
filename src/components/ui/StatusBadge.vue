@@ -15,6 +15,8 @@ const statusClass = computed<string>(() => {
       return 'status-received';
     case 'สั่งแล้ว':
       return 'status-ordered';
+    case 'ยกเลิก':
+      return 'status-cancelled';
     case 'ต้องสั่งซื้อ':
     default:
       return 'status-pending';

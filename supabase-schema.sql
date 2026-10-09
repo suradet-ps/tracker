@@ -77,7 +77,7 @@ create table if not exists public.purchase_orders (
   total_price numeric,
   order_date date,
   received_date date,
-  status text not null default 'ต้องสั่งซื้อ',
+  status text not null default 'ต้องสั่งซื้อ', -- app statuses: ต้องสั่งซื้อ | สั่งแล้ว | รับของแล้ว | ยกเลิก
   created_at timestamptz default now(),
   packaging text
 );

@@ -39,6 +39,7 @@ const statusCounts = computed<Record<StatusFilter, number>>(() => {
     ต้องสั่งซื้อ: 0,
     สั่งแล้ว: 0,
     รับของแล้ว: 0,
+    ยกเลิก: 0,
   };
 
   for (const order of allOrders.value) {
@@ -53,6 +54,7 @@ const statusChips: { value: StatusFilter; label: string }[] = [
   { value: 'ต้องสั่งซื้อ', label: 'ต้องสั่งซื้อ' },
   { value: 'สั่งแล้ว', label: 'สั่งแล้ว' },
   { value: 'รับของแล้ว', label: 'รับของแล้ว' },
+  { value: 'ยกเลิก', label: 'ยกเลิก' },
 ];
 
 /** Unique supplier names present in the history, for the filter select. */
@@ -65,6 +67,7 @@ const STATUS_RANK: Record<PurchaseOrderStatus, number> = {
   ต้องสั่งซื้อ: 0,
   สั่งแล้ว: 1,
   รับของแล้ว: 2,
+  ยกเลิก: 3,
 };
 
 /** Filters and (optionally) sorts the history. */

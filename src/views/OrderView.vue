@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router';
 import AddOrderForm from '@/components/AddOrderForm.vue';
 import OrderSummaryModal from '@/components/OrderSummaryModal.vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
+import AppModal from '@/components/ui/AppModal.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import StatCard from '@/components/ui/StatCard.vue';
 import { useNotificationStore } from '@/stores/notification';
@@ -35,6 +36,10 @@ const error = ref<string | null>(null);
 const showAddForm = ref<boolean>(false);
 const selectedOrderIds = ref<Set<number>>(new Set());
 const isModalVisible = ref<boolean>(false);
+/** Orders awaiting confirmation in the cancel dialog (one or many). */
+const ordersToCancel = ref<OrderViewOrder[]>([]);
+/** Whether the cancel update is in flight. */
+const isCancelling = ref<boolean>(false);
 
 const searchQuery = ref<string>('');
 const supplierFilter = ref<string>('');
@@ -89,6 +94,16 @@ const hasActiveFilter = computed<boolean>(
 );
 
 const selectedCount = computed<number>(() => selectedOrderIds.value.size);
+
+/** The rows the operator has selected, in queue order. */
+const selectedOrders = computed<OrderViewOrder[]>(() =>
+  orders.value.filter(order => selectedOrderIds.value.has(order.id)),
+);
+
+/** The lone order in the cancel dialog, when only one is targeted. */
+const singleCancelOrder = computed<OrderViewOrder | null>(() =>
+  ordersToCancel.value.length === 1 ? (ordersToCancel.value[0] ?? null) : null,
+);
 
 const isAllVisibleSelected = computed<boolean>(() =>
   visibleOrders.value.length > 0
@@ -240,6 +255,98 @@ function clearSelection(): void {
 function openSummaryModal(): void {
   if (selectedOrderIds.value.size > 0) {
     isModalVisible.value = true;
+  }
+}
+
+// ─────────────────────────────────────────────
+// Cancellation
+// ─────────────────────────────────────────────
+
+/** Opens the cancel dialog for a single order. */
+function requestCancel(order: OrderViewOrder): void {
+  ordersToCancel.value = [order];
+}
+
+/** Opens the cancel dialog for every selected order. */
+function requestCancelSelected(): void {
+  ordersToCancel.value = [...selectedOrders.value];
+}
+
+/** Closes the cancel dialog; ignored while the update is in flight. */
+function dismissCancel(): void {
+  if (isCancelling.value)
+    return;
+  ordersToCancel.value = [];
+}
+
+/**
+ * Marks the confirmed orders as cancelled. The rows leave the queue and
+ * stay in the history with the status ยกเลิก for audit.
+ */
+async function confirmCancel(): Promise<void> {
+  const targets = ordersToCancel.value;
+  if (targets.length === 0)
+    return;
+
+  isCancelling.value = true;
+  const ids = targets.map(order => order.id);
+
+  try {
+    const { data: updated, error: updateError } = await supabase
+      .from('purchase_orders')
+      .update({ status: 'ยกเลิก' })
+      .in('id', ids)
+      .eq('status', 'ต้องสั่งซื้อ')
+      .select('id');
+
+    if (updateError)
+      throw updateError;
+
+    // Only the rows that were still queued are actually cancelled; rows a
+    // concurrent session already sent (or cancelled) come back out of scope.
+    const cancelledIds = new Set((updated ?? []).map(row => row.id));
+    orders.value = orders.value.filter(order => !cancelledIds.has(order.id));
+    selectedOrderIds.value = new Set(
+      [...selectedOrderIds.value].filter(id => !cancelledIds.has(id)),
+    );
+    ordersToCancel.value = [];
+
+    const skipped = ids.length - cancelledIds.size;
+
+    if (cancelledIds.size === 0) {
+      notificationStore.showNotification({
+        message: 'รายการที่เลือกถูกดำเนินการไปแล้วจากที่อื่น กรุณาตรวจสอบอีกครั้ง',
+        type: 'error',
+      });
+      await fetchOrdersToBuy();
+    }
+    else if (skipped > 0) {
+      notificationStore.showNotification({
+        message: `ยกเลิกรายการ ${cancelledIds.size} รายการ; อีก ${skipped} รายการถูกดำเนินการไปแล้ว`,
+        type: 'info',
+      });
+      await fetchOrdersToBuy();
+    }
+    else {
+      notificationStore.showNotification({
+        message: ids.length === 1
+          ? `ยกเลิกรายการ "${targets[0]!.drugs.name}" เรียบร้อย!`
+          : `ยกเลิกรายการที่เลือก ${ids.length} รายการเรียบร้อย!`,
+        type: 'success',
+      });
+    }
+
+    countsStore.refresh();
+  }
+  catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
+    notificationStore.showNotification({
+      message: `เกิดข้อผิดพลาด: ${message}`,
+      type: 'error',
+    });
+  }
+  finally {
+    isCancelling.value = false;
   }
 }
 
@@ -432,6 +539,9 @@ onMounted(fetchOrdersToBuy);
                   <AppIcon :name="sortIcon('total')" :size="13" class="sort-icon" />
                 </button>
               </th>
+              <th class="col-actions" scope="col">
+                <span class="sr-only">การจัดการ</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -463,6 +573,18 @@ onMounted(fetchOrdersToBuy);
               <td class="num">
                 <strong>{{ formatMoney(order.total_price) }}</strong>
               </td>
+              <td class="col-actions">
+                <button
+                  type="button"
+                  class="btn btn-danger-soft btn-icon btn-sm"
+                  :disabled="isCancelling"
+                  :title="`ยกเลิกรายการ ${order.drugs.name}`"
+                  :aria-label="`ยกเลิกรายการ ${order.drugs.name}`"
+                  @click="requestCancel(order)"
+                >
+                  <AppIcon name="x" :size="15" />
+                </button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -484,6 +606,15 @@ onMounted(fetchOrdersToBuy);
       <button type="button" class="btn btn-subtle btn-sm" @click="clearSelection">
         ล้างการเลือก
       </button>
+      <button
+        type="button"
+        class="btn btn-danger-soft btn-sm"
+        :disabled="isCancelling"
+        @click="requestCancelSelected"
+      >
+        <AppIcon name="x" :size="15" />
+        ยกเลิกที่เลือก
+      </button>
       <button type="button" class="btn btn-primary" :disabled="selectedCount === 0" @click="openSummaryModal">
         <AppIcon name="send" :size="15" />
         สร้างใบสั่งซื้อ
@@ -498,11 +629,58 @@ onMounted(fetchOrdersToBuy);
       @close="isModalVisible = false"
       @orders-sent="handleOrdersSent"
     />
+
+    <!-- Cancel confirmation -->
+    <AppModal
+      v-if="ordersToCancel.length > 0"
+      :title="ordersToCancel.length === 1 ? 'ยืนยันการยกเลิกรายการ' : `ยืนยันการยกเลิก ${ordersToCancel.length} รายการ`"
+      size="sm"
+      @close="dismissCancel"
+    >
+      <p v-if="singleCancelOrder" class="cancel-question">
+        ยกเลิกรายการ "<strong>{{ singleCancelOrder.drugs.name }}</strong>"
+        จาก {{ singleCancelOrder.suppliers.name }}?
+      </p>
+      <p v-else class="cancel-question">
+        ยกเลิกรายการที่เลือก <strong>{{ ordersToCancel.length }}</strong> รายการ?
+      </p>
+      <p class="cancel-hint">
+        ใช้เมื่อยังไม่ได้สร้างใบสั่งซื้อรายการนี้ - รายการจะออกจากคิว
+        และยังอยู่ในประวัติพร้อมสถานะ "ยกเลิก"
+      </p>
+
+      <template #footer>
+        <button type="button" class="btn btn-ghost" :disabled="isCancelling" @click="dismissCancel">
+          ปิด
+        </button>
+        <button type="button" class="btn btn-danger" :disabled="isCancelling" @click="confirmCancel">
+          <span v-if="isCancelling" class="spinner spinner-sm" />
+          <AppIcon v-else name="x" :size="15" />
+          {{ isCancelling ? 'กำลังบันทึก...' : 'ยืนยันยกเลิก' }}
+        </button>
+      </template>
+    </AppModal>
   </div>
 </template>
 
 <style scoped>
 .sort-button-num {
   justify-content: flex-end;
+}
+
+.cancel-question {
+  margin: 0 0 0.5rem;
+  color: var(--text);
+}
+
+.cancel-hint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.btn-danger .spinner-sm {
+  border-color: color-mix(in srgb, #ffffff 35%, transparent);
+  border-top-color: #ffffff;
 }
 </style>

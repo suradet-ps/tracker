@@ -80,8 +80,11 @@ raw hex values.
 | `--status-pending-*`           | `#a83f3f` on `#f9e9e9` | `#ffb1b1` on `rgba(199,82,82,.22)`   | Status: ต้องสั่งซื้อ  |
 | `--status-ordered-*`           | `#8a6234` on `#f7efdf` | `#eccb9e` on `rgba(217,176,140,.18)` | Status: สั่งแล้ว      |
 | `--status-received-*`          | `#0e5456` on `#dfeeed` | `#7fd0c3` on `rgba(17,100,102,.38)`  | Status: รับของแล้ว    |
+| `--status-cancelled-*`         | `#5f6b67` on `#e9edec` | `#aab9b4` on `rgba(170,185,180,.16)` | Status: ยกเลิก        |
 
-Status colors describe order state only. They are never decorative.
+Status colors describe order state only. They are never decorative. `ยกเลิก`
+means the order was placed but never arrived: the row leaves the receiving
+queue and stays in the history for audit.
 
 ---
 

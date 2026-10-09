@@ -4,6 +4,7 @@ import type { ReceivableOrder, ReceiveViewOrder } from '@/types/database';
 
 import { computed, onMounted, ref } from 'vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
+import AppModal from '@/components/ui/AppModal.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import StatCard from '@/components/ui/StatCard.vue';
 import { useNotificationStore } from '@/stores/notification';
@@ -27,6 +28,10 @@ const searchQuery = ref<string>('');
 const supplierFilter = ref<string>('');
 const loading = ref<boolean>(true);
 const error = ref<string | null>(null);
+/** Order awaiting confirmation in the cancel dialog, if any. */
+const orderToCancel = ref<ReceivableOrder | null>(null);
+/** Whether the cancel update is in flight. */
+const isCancelling = ref<boolean>(false);
 
 // ─────────────────────────────────────────────
 // Computed
@@ -158,16 +163,29 @@ async function markAsReceived(order: ReceivableOrder): Promise<void> {
   order.isSaving = true;
 
   try {
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('purchase_orders')
       .update({
         received_date: order.received_date_input,
         status: 'รับของแล้ว',
       })
-      .eq('id', order.id);
+      .eq('id', order.id)
+      .eq('status', 'สั่งแล้ว')
+      .select('id');
 
     if (updateError) {
       throw updateError;
+    }
+
+    // A status-filtered update that matches nothing is not an error: the row
+    // was received or cancelled from another session meanwhile.
+    if (!updated || updated.length === 0) {
+      notificationStore.showNotification({
+        message: `รายการ "${order.drugs.name}" ถูกดำเนินการไปแล้วจากที่อื่น กรุณาตรวจสอบอีกครั้ง`,
+        type: 'error',
+      });
+      await fetchOrdersToReceive();
+      return;
     }
 
     // Remove the order from the local list after successful update
@@ -190,6 +208,71 @@ async function markAsReceived(order: ReceivableOrder): Promise<void> {
   }
 }
 
+/** Opens the confirmation dialog for cancelling `order`. */
+function requestCancel(order: ReceivableOrder): void {
+  orderToCancel.value = order;
+}
+
+/** Closes the cancel dialog; ignored while the update is in flight. */
+function dismissCancel(): void {
+  if (isCancelling.value)
+    return;
+  orderToCancel.value = null;
+}
+
+/**
+ * Marks the confirmed order as cancelled. The row leaves the receiving
+ * queue and stays in the history with the status ยกเลิก for audit.
+ */
+async function confirmCancel(): Promise<void> {
+  const order = orderToCancel.value;
+  if (!order)
+    return;
+
+  isCancelling.value = true;
+
+  try {
+    const { data: updated, error: updateError } = await supabase
+      .from('purchase_orders')
+      .update({ status: 'ยกเลิก' })
+      .eq('id', order.id)
+      .eq('status', 'สั่งแล้ว')
+      .select('id');
+
+    if (updateError)
+      throw updateError;
+
+    // The row was received or cancelled from another session meanwhile.
+    if (!updated || updated.length === 0) {
+      orderToCancel.value = null;
+      notificationStore.showNotification({
+        message: `รายการ "${order.drugs.name}" ถูกดำเนินการไปแล้วจากที่อื่น กรุณาตรวจสอบอีกครั้ง`,
+        type: 'error',
+      });
+      await fetchOrdersToReceive();
+      return;
+    }
+
+    orders.value = orders.value.filter(o => o.id !== order.id);
+    orderToCancel.value = null;
+    notificationStore.showNotification({
+      message: `ยกเลิกรายการ "${order.drugs.name}" เรียบร้อย!`,
+      type: 'success',
+    });
+    countsStore.refresh();
+  }
+  catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
+    notificationStore.showNotification({
+      message: `เกิดข้อผิดพลาด: ${message}`,
+      type: 'error',
+    });
+  }
+  finally {
+    isCancelling.value = false;
+  }
+}
+
 // ─────────────────────────────────────────────
 // Lifecycle
 // ─────────────────────────────────────────────
@@ -205,7 +288,7 @@ onMounted(fetchOrdersToReceive);
           รายการรอรับของ
         </h1>
         <p class="page-desc">
-          บันทึกวันที่รับของจริงเพื่อปิดรายการ - รายการจะย้ายไปอยู่ในประวัติทันที
+          บันทึกวันที่รับของจริงเพื่อปิดรายการ หรือยกเลิกรายการที่สั่งซื้อแล้วแต่ไม่ได้ของจริง - รายการจะย้ายไปอยู่ในประวัติทันที
         </p>
       </div>
       <div class="page-actions">
@@ -358,22 +441,63 @@ onMounted(fetchOrdersToReceive);
                 </div>
               </td>
               <td class="col-actions">
-                <button
-                  type="button"
-                  class="btn btn-primary btn-sm"
-                  :disabled="!order.received_date_input || order.isSaving"
-                  @click="markAsReceived(order)"
-                >
-                  <span v-if="order.isSaving" class="spinner spinner-sm" />
-                  <AppIcon v-else name="check" :size="15" />
-                  {{ order.isSaving ? 'กำลังบันทึก...' : 'บันทึก' }}
-                </button>
+                <div class="row-actions">
+                  <button
+                    type="button"
+                    class="btn btn-danger-soft btn-icon btn-sm"
+                    :disabled="order.isSaving || isCancelling"
+                    :title="`ยกเลิกรายการ ${order.drugs.name}`"
+                    :aria-label="`ยกเลิกรายการ ${order.drugs.name}`"
+                    @click="requestCancel(order)"
+                  >
+                    <AppIcon name="x" :size="15" />
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-icon btn-sm"
+                    :disabled="!order.received_date_input || order.isSaving"
+                    :title="`บันทึกการรับของ ${order.drugs.name}`"
+                    :aria-label="`บันทึกการรับของ ${order.drugs.name}`"
+                    @click="markAsReceived(order)"
+                  >
+                    <span v-if="order.isSaving" class="spinner spinner-sm" />
+                    <AppIcon v-else name="check" :size="15" />
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
     </template>
+
+    <!-- Cancel confirmation -->
+    <AppModal
+      v-if="orderToCancel"
+      title="ยืนยันการยกเลิกรายการ"
+      size="sm"
+      @close="dismissCancel"
+    >
+      <p class="cancel-question">
+        ยกเลิกรายการ "<strong>{{ orderToCancel.drugs.name }}</strong>"
+        จาก {{ orderToCancel.suppliers.name }}?
+      </p>
+      <p class="cancel-hint">
+        ใช้เมื่อสั่งซื้อแล้วแต่ไม่ได้รับยาจริง - รายการจะออกจากคิวรอรับของ
+        และยังอยู่ในประวัติพร้อมสถานะ "ยกเลิก"
+      </p>
+
+      <template #footer>
+        <button type="button" class="btn btn-ghost" :disabled="isCancelling" @click="dismissCancel">
+          ปิด
+        </button>
+        <button type="button" class="btn btn-danger" :disabled="isCancelling" @click="confirmCancel">
+          <span v-if="isCancelling" class="spinner spinner-sm" />
+          <AppIcon v-else name="x" :size="15" />
+          {{ isCancelling ? 'กำลังบันทึก...' : 'ยืนยันยกเลิก' }}
+        </button>
+      </template>
+    </AppModal>
   </div>
 </template>
 
@@ -391,8 +515,31 @@ onMounted(fetchOrdersToReceive);
   font-size: var(--text-sm);
 }
 
+.row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.cancel-question {
+  margin: 0 0 0.5rem;
+  color: var(--text);
+}
+
+.cancel-hint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
 .btn-primary .spinner-sm {
   border-color: color-mix(in srgb, var(--on-primary) 35%, transparent);
   border-top-color: var(--on-primary);
+}
+
+.btn-danger .spinner-sm {
+  border-color: color-mix(in srgb, #ffffff 35%, transparent);
+  border-top-color: #ffffff;
 }
 </style>
