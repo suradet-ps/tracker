@@ -150,7 +150,11 @@ export type Database = {
 // Domain enums & union types
 // ─────────────────────────────────────────────
 
-export type PurchaseOrderStatus = 'ต้องสั่งซื้อ' | 'สั่งแล้ว' | 'รับของแล้ว';
+/**
+ * Order lifecycle: ต้องสั่งซื้อ → สั่งแล้ว → รับของแล้ว, or
+ * ต้องสั่งซื้อ → สั่งแล้ว → ยกเลิก when the order never arrives.
+ */
+export type PurchaseOrderStatus = 'ต้องสั่งซื้อ' | 'สั่งแล้ว' | 'รับของแล้ว' | 'ยกเลิก';
 
 // ─────────────────────────────────────────────
 // Row shorthand aliases
