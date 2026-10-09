@@ -3,8 +3,9 @@
 --
 -- Every scheduled run calls the `send-overdue-reminders` edge function, which
 -- sends one polite plain-text message per supplier for orders that have been
--- สั่งแล้ว for more than 14 days. Schedule: Monday to Friday 08:00 Asia/Bangkok
--- (pg_cron runs in UTC, so 08:00 Bangkok = 01:00 UTC).
+-- สั่งแล้ว for more than OVERDUE_DAYS days (function secret, default 14).
+-- Schedule: Monday to Friday 08:00 Asia/Bangkok (pg_cron runs in UTC, so
+-- 08:00 Bangkok = 01:00 UTC).
 --
 -- One-time setup
 --   1) Enable the extensions from Dashboard > Database > Extensions:
@@ -61,7 +62,9 @@ select cron.schedule(
         where name = 'tracker_cron_secret'
       )
     ),
-    body := jsonb_build_object('days', 14),
+    -- Empty body: the threshold comes from the OVERDUE_DAYS secret. A manual
+    -- run of this command can pass jsonb_build_object('days', N) to override.
+    body := '{}'::jsonb,
     timeout_milliseconds := 20000
   ) as request_id;
   $job$
