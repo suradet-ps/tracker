@@ -70,7 +70,8 @@ function orderEntry(row: OverdueRow, index: number, today: string): string[] {
   const name = row.drugs?.name ?? 'ไม่ระบุชื่อยา';
   const strength = row.drugs?.strength ? ` ความแรง ${row.drugs.strength}` : '';
   const form = row.drugs?.form ? ` (${row.drugs.form})` : '';
-  const unit = row.unit_count ? ` ${row.unit_count}` : '';
+  const unitCount = row.unit_count?.trim();
+  const unit = unitCount ? ` x ${unitCount}` : '';
   const days = daysBetween(row.order_date, today);
 
   return [
