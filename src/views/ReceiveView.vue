@@ -163,16 +163,29 @@ async function markAsReceived(order: ReceivableOrder): Promise<void> {
   order.isSaving = true;
 
   try {
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('purchase_orders')
       .update({
         received_date: order.received_date_input,
         status: 'รับของแล้ว',
       })
-      .eq('id', order.id);
+      .eq('id', order.id)
+      .eq('status', 'สั่งแล้ว')
+      .select('id');
 
     if (updateError) {
       throw updateError;
+    }
+
+    // A status-filtered update that matches nothing is not an error: the row
+    // was received or cancelled from another session meanwhile.
+    if (!updated || updated.length === 0) {
+      notificationStore.showNotification({
+        message: `รายการ "${order.drugs.name}" ถูกดำเนินการไปแล้วจากที่อื่น กรุณาตรวจสอบอีกครั้ง`,
+        type: 'error',
+      });
+      await fetchOrdersToReceive();
+      return;
     }
 
     // Remove the order from the local list after successful update
@@ -219,13 +232,26 @@ async function confirmCancel(): Promise<void> {
   isCancelling.value = true;
 
   try {
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('purchase_orders')
       .update({ status: 'ยกเลิก' })
-      .eq('id', order.id);
+      .eq('id', order.id)
+      .eq('status', 'สั่งแล้ว')
+      .select('id');
 
     if (updateError)
       throw updateError;
+
+    // The row was received or cancelled from another session meanwhile.
+    if (!updated || updated.length === 0) {
+      orderToCancel.value = null;
+      notificationStore.showNotification({
+        message: `รายการ "${order.drugs.name}" ถูกดำเนินการไปแล้วจากที่อื่น กรุณาตรวจสอบอีกครั้ง`,
+        type: 'error',
+      });
+      await fetchOrdersToReceive();
+      return;
+    }
 
     orders.value = orders.value.filter(o => o.id !== order.id);
     orderToCancel.value = null;

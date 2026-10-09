@@ -292,26 +292,50 @@ async function confirmCancel(): Promise<void> {
   const ids = targets.map(order => order.id);
 
   try {
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from('purchase_orders')
       .update({ status: 'ยกเลิก' })
-      .in('id', ids);
+      .in('id', ids)
+      .eq('status', 'ต้องสั่งซื้อ')
+      .select('id');
 
     if (updateError)
       throw updateError;
 
-    const cancelledIds = new Set(ids);
+    // Only the rows that were still queued are actually cancelled; rows a
+    // concurrent session already sent (or cancelled) come back out of scope.
+    const cancelledIds = new Set((updated ?? []).map(row => row.id));
     orders.value = orders.value.filter(order => !cancelledIds.has(order.id));
     selectedOrderIds.value = new Set(
       [...selectedOrderIds.value].filter(id => !cancelledIds.has(id)),
     );
     ordersToCancel.value = [];
-    notificationStore.showNotification({
-      message: ids.length === 1
-        ? `ยกเลิกรายการ "${targets[0]!.drugs.name}" เรียบร้อย!`
-        : `ยกเลิกรายการที่เลือก ${ids.length} รายการเรียบร้อย!`,
-      type: 'success',
-    });
+
+    const skipped = ids.length - cancelledIds.size;
+
+    if (cancelledIds.size === 0) {
+      notificationStore.showNotification({
+        message: 'รายการที่เลือกถูกดำเนินการไปแล้วจากที่อื่น กรุณาตรวจสอบอีกครั้ง',
+        type: 'error',
+      });
+      await fetchOrdersToBuy();
+    }
+    else if (skipped > 0) {
+      notificationStore.showNotification({
+        message: `ยกเลิกรายการ ${cancelledIds.size} รายการ; อีก ${skipped} รายการถูกดำเนินการไปแล้ว`,
+        type: 'info',
+      });
+      await fetchOrdersToBuy();
+    }
+    else {
+      notificationStore.showNotification({
+        message: ids.length === 1
+          ? `ยกเลิกรายการ "${targets[0]!.drugs.name}" เรียบร้อย!`
+          : `ยกเลิกรายการที่เลือก ${ids.length} รายการเรียบร้อย!`,
+        type: 'success',
+      });
+    }
+
     countsStore.refresh();
   }
   catch (err: unknown) {

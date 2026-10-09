@@ -195,11 +195,15 @@ async function confirmAndSend(): Promise<void> {
         );
       }
 
-      // Notification succeeded - update DB for this supplier's orders immediately
-      const { error: dbError } = await supabase
+      // Notification succeeded - update DB for this supplier's orders immediately.
+      // Only rows still queued are flipped: rows a concurrent session already
+      // cancelled (or sent) must not be overwritten.
+      const { data: updatedRows, error: dbError } = await supabase
         .from('purchase_orders')
         .update({ status: 'สั่งแล้ว', order_date: dateForDatabase })
-        .in('id', groupOrderIds);
+        .in('id', groupOrderIds)
+        .eq('status', 'ต้องสั่งซื้อ')
+        .select('id');
 
       if (dbError) {
         console.error(`DB update failed for supplier "${supplierName}" after notification was sent.`, dbError);
@@ -208,8 +212,14 @@ async function confirmAndSend(): Promise<void> {
         );
       }
 
-      // Track successfully processed IDs
-      successfulIds.push(...groupOrderIds);
+      const updatedIds = (updatedRows ?? []).map(row => row.id);
+      successfulIds.push(...updatedIds);
+
+      if (updatedIds.length !== groupOrderIds.length) {
+        throw new Error(
+          `แจ้งเตือน ${supplierName} แล้ว แต่มี ${groupOrderIds.length - updatedIds.length} รายการที่ถูกยกเลิกหรือดำเนินการไปก่อนหน้านี้`,
+        );
+      }
     }
 
     emit('ordersSent');
