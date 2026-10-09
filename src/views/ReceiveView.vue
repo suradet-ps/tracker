@@ -88,6 +88,25 @@ function clearFilters(): void {
   supplierFilter.value = '';
 }
 
+/** Queued for this many days or more gets the overdue chip. */
+const OVERDUE_DAYS = 14;
+const MS_PER_DAY = 86_400_000;
+
+/** Today in Asia/Bangkok as `YYYY-MM-DD` (matches the reminder function). */
+function bangkokTodayIso(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+}
+
+/** Whole days since an ISO order date, or 0 when the date is missing. */
+function daysOverdue(orderDate: string | null): number {
+  if (!orderDate)
+    return 0;
+
+  return Math.round(
+    (Date.parse(`${bangkokTodayIso()}T00:00:00Z`) - Date.parse(`${orderDate}T00:00:00Z`)) / MS_PER_DAY,
+  );
+}
+
 /** Today's date as the `YYYY-MM-DD` string an `<input type="date">` expects. */
 function todayIso(): string {
   const now = new Date();
@@ -420,7 +439,15 @@ onMounted(fetchOrdersToReceive);
                 </span>
               </td>
               <td>{{ order.suppliers.name }}</td>
-              <td>{{ formatDate(order.order_date) }}</td>
+              <td>
+                {{ formatDate(order.order_date) }}
+                <span
+                  v-if="daysOverdue(order.order_date) >= OVERDUE_DAYS"
+                  class="overdue-chip"
+                >
+                  ค้าง {{ daysOverdue(order.order_date) }} วัน
+                </span>
+              </td>
               <td>
                 <div class="date-cell">
                   <input
@@ -520,6 +547,19 @@ onMounted(fetchOrdersToReceive);
   align-items: center;
   justify-content: flex-end;
   gap: 0.4rem;
+}
+
+/* Urgency chip next to the order date once a queue entry passes OVERDUE_DAYS. */
+.overdue-chip {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--radius-full);
+  background-color: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .cancel-question {

@@ -8,3 +8,11 @@ entrypoint = "./functions/send-telegram-notify/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/send-telegram-notify/*.html" ]
+
+# Scheduled overdue-order reminders. JWT verification is disabled because the
+# caller is pg_cron (see supabase/cron/overdue-reminders.sql); the function
+# itself requires the x-cron-secret header instead.
+[functions.send-overdue-reminders]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-overdue-reminders/index.ts"
