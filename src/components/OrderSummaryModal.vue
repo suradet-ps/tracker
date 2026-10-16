@@ -6,6 +6,7 @@ import { computed, ref } from 'vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
 import AppModal from '@/components/ui/AppModal.vue';
 import { supabase } from '@/supabase/client';
+import { extractFunctionErrorMessage, isFunctionTimeoutError } from '@/utils/function-errors';
 import { formatMoney, formatQuantity } from '@/utils/number';
 import { escapeMarkdownV2 } from '@/utils/telegram';
 
@@ -135,9 +136,20 @@ function buildTelegramMessage(
 // Core action
 // ─────────────────────────────────────────────
 
+/** Abort each notification invoke after this long so the modal can never hang forever. */
+const NOTIFY_TIMEOUT_MS = 30_000;
+
+/**
+ * Supplier groups whose notification was already delivered in this modal
+ * session. A retry after a partial failure skips them so no supplier is
+ * notified twice.
+ */
+const sentSuppliers = new Set<string>();
+
 /**
  * Ignore dismissal requests (Escape, backdrop, close button) while the
  * send is in flight: unmounting mid-flight would strand the result.
+ * The invoke timeout bounds how long that can block.
  */
 function handleClose(): void {
   if (!isSending.value)
@@ -157,6 +169,9 @@ async function confirmAndSend(): Promise<void> {
 
     // Send a Telegram notification per supplier group
     for (const supplierName of Object.keys(props.groupedOrders)) {
+      if (sentSuppliers.has(supplierName))
+        continue;
+
       const group = props.groupedOrders[supplierName];
       if (!group)
         continue;
@@ -166,25 +181,26 @@ async function confirmAndSend(): Promise<void> {
       // Collect IDs for this supplier group
       const groupOrderIds = group.orders.map(order => order.id);
 
-      // Invoke Supabase Edge Function to send Telegram notification
-      const { data: functionResponse, error: functionError } = await supabase.functions.invoke(
+      // Invoke Supabase Edge Function to send Telegram notification. The
+      // timeout aborts a hung invocation instead of stranding the modal.
+      const { error: functionError } = await supabase.functions.invoke(
         'send-telegram-notify',
-        { body: { message } },
+        { body: { message }, timeout: NOTIFY_TIMEOUT_MS },
       );
 
       if (functionError) {
-        throw new Error(
-          `Failed to send notification for ${supplierName}: ${functionError.message}`,
-        );
+        if (isFunctionTimeoutError(functionError)) {
+          throw new Error(
+            `แจ้งเตือน ${supplierName} ใช้เวลานานเกิน ${NOTIFY_TIMEOUT_MS / 1000} วินาที กรุณาตรวจสอบการเชื่อมต่อแล้วกดส่งอีกครั้ง (รายการที่ส่งสำเร็จแล้วจะไม่ถูกส่งซ้ำ)`,
+          );
+        }
+
+        const serverMessage = await extractFunctionErrorMessage(functionError);
+        throw new Error(`ส่งแจ้งเตือน ${supplierName} ไม่สำเร็จ: ${serverMessage}`);
       }
 
-      // The edge function may return an error in the response body
-      const responseBody = functionResponse as { error?: string } | null;
-      if (responseBody?.error) {
-        throw new Error(
-          `Edge function returned an error for ${supplierName}: ${responseBody.error}`,
-        );
-      }
+      // Delivered: a retry must not notify this supplier again.
+      sentSuppliers.add(supplierName);
 
       // Notification succeeded - update DB for this supplier's orders immediately.
       // Only rows still queued are flipped: rows a concurrent session already
@@ -199,7 +215,7 @@ async function confirmAndSend(): Promise<void> {
       if (dbError) {
         console.error(`DB update failed for supplier "${supplierName}" after notification was sent.`, dbError);
         throw new Error(
-          `Notification sent for ${supplierName}, but DB update failed: ${dbError.message}`,
+          `แจ้งเตือน ${supplierName} สำเร็จแล้ว แต่บันทึกสถานะลงฐานข้อมูลไม่สำเร็จ: ${dbError.message}`,
         );
       }
 
