@@ -9,6 +9,12 @@ describe('formatMoney', () => {
   it('keeps zero as 0.00', () => {
     expect(formatMoney(0)).toBe('0.00');
   });
+
+  it('returns a dash for null, undefined, and NaN', () => {
+    expect(formatMoney(null)).toBe('-');
+    expect(formatMoney(undefined)).toBe('-');
+    expect(formatMoney(Number.NaN)).toBe('-');
+  });
 });
 
 describe('formatQuantity', () => {
@@ -22,5 +28,11 @@ describe('formatQuantity', () => {
 
   it('keeps zero as 0', () => {
     expect(formatQuantity(0)).toBe('0');
+  });
+
+  it('returns a dash for null, undefined, and NaN', () => {
+    expect(formatQuantity(null)).toBe('-');
+    expect(formatQuantity(undefined)).toBe('-');
+    expect(formatQuantity(Number.NaN)).toBe('-');
   });
 });
