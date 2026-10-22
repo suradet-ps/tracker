@@ -58,4 +58,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           channelId: live
           projectId: drug-tracker-system
-          firebaseToolsVersion: "15.34.0"
+          firebaseToolsVersion: 15.34.0
