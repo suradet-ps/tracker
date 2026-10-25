@@ -1,5 +1,5 @@
 // Run this command to generate base config and vs code settings:
-// npx @antfu/eslint-config@latest
+// bunx @antfu/eslint-config@latest
 
 import antfu from '@antfu/eslint-config';
 

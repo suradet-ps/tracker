@@ -2,7 +2,7 @@ blank_issues_enabled: true
 contact_links:
   - name: Development setup
     url: https://github.com/suradet-ps/tracker/blob/main/README.md
-    about: Local setup (npm install, npm run dev), Supabase configuration, and the Telegram edge function
+    about: Local setup (bun install, bun run dev), Supabase configuration, and the Telegram edge function
   - name: Interface rules
     url: https://github.com/suradet-ps/tracker/blob/main/DESIGN.md
     about: Design system and UI conventions for the Tracker interface
