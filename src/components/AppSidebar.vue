@@ -35,6 +35,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     label: 'งานประจำวัน',
     items: [
       { name: 'QuickOrder', label: 'สร้างใบสั่งซื้อด่วน', icon: 'zap' },
+      { name: 'AutoPlan', label: 'แผนสั่งซื้ออัตโนมัติ', icon: 'calendar' },
       { name: 'Order', label: 'รายการต้องสั่งซื้อ', icon: 'clipboardList', badge: 'pending' },
       { name: 'Receive', label: 'รายการรอรับของ', icon: 'truck', badge: 'receiving' },
     ],
