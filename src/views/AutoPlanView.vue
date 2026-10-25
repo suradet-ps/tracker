@@ -341,7 +341,7 @@ async function togglePlan(plan: AutoOrderPlanWithRelations): Promise<void> {
     const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
     notificationStore.showNotification({
       message: message.includes('auto_order_plans_one_active_per_drug')
-        ? 'ยานี้มีแผนที่เปิดใช้งานอยู่แล้ว กรุณาหยุดแผนเดิมก่อน'
+        ? 'ยานี้มีแผนเปิดใช้งานอยู่แล้ว กรุณาหยุดแผนเดิมก่อน'
         : `เกิดข้อผิดพลาด: ${message}`,
       type: 'error',
     });

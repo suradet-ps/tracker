@@ -229,16 +229,22 @@ async function handleSubmit(): Promise<void> {
   error.value = null;
 
   try {
-    const { data: duplicate } = await supabase
-      .from('auto_order_plans')
-      .select('id')
-      .eq('drug_id', form.drugId)
-      .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
+    // Editing a paused plan leaves it paused, so it cannot collide with an
+    // active plan for the same drug. Only active saves need this check.
+    const willBeActive = !props.plan || props.plan.is_active;
 
-    if (duplicate && duplicate.id !== props.plan?.id) {
-      throw new Error('ยานี้มีแผนที่เปิดใช้งานอยู่แล้ว กรุณาหยุดแผนเดิมก่อน');
+    if (willBeActive) {
+      const { data: duplicate } = await supabase
+        .from('auto_order_plans')
+        .select('id')
+        .eq('drug_id', form.drugId)
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
+
+      if (duplicate && duplicate.id !== props.plan?.id) {
+        throw new Error('ยานี้มีแผนเปิดใช้งานอยู่แล้ว กรุณาหยุดแผนเดิมก่อน');
+      }
     }
 
     const { data: supplier, error: supplierError } = await supabase
@@ -289,7 +295,7 @@ async function handleSubmit(): Promise<void> {
   catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
     error.value = message.includes('auto_order_plans_one_active_per_drug')
-      ? 'ยานี้มีแผนที่เปิดใช้งานอยู่แล้ว กรุณาหยุดแผนเดิมก่อน'
+      ? 'ยานี้มีแผนเปิดใช้งานอยู่แล้ว กรุณาหยุดแผนเดิมก่อน'
       : message;
   }
   finally {
@@ -371,7 +377,7 @@ onMounted(async () => {
                 <span class="drug-name">{{ drug.name }}</span>
                 <span class="drug-meta">
                   {{ drug.form }} {{ drug.strength }}
-                  <template v-if="isDrugUnavailable(drug)"> · มีแผนที่เปิดใช้งานแล้ว</template>
+                  <template v-if="isDrugUnavailable(drug)"> · มีแผนเปิดใช้งานแล้ว</template>
                 </span>
               </button>
             </li>

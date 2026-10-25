@@ -310,8 +310,14 @@ async function processPlan(plan: PlanRow, today: string, dryRun: boolean): Promi
     if (await hasOpenDraft(plan.drug_id)) {
       const message = `มียา "${drugName}" อยู่ในสถานะ ต้องสั่งซื้อ รอตรวจสอบอยู่ จึงข้ามรอบนี้`;
 
-      if (!dryRun && !(await hasSkipLogToday(plan.id, today))) {
-        await logRun(plan.id, 'skipped_open_draft', null, quantity, message, today);
+      if (!dryRun) {
+        // Skipping consumes this cycle: without advancing, the next daily run
+        // would create a second draft once the pharmacist processes the first.
+        await advancePlan(plan.id, nextDate);
+
+        if (!(await hasSkipLogToday(plan.id, today))) {
+          await logRun(plan.id, 'skipped_open_draft', null, quantity, message, today);
+        }
       }
 
       return { ...base, status: 'skipped_open_draft', message };
@@ -498,10 +504,9 @@ Deno.serve(async (request: Request): Promise<Response> => {
 
     let notificationError: string | undefined;
 
-    // Skip-only runs stay silent so a stale draft does not page the team every
-    // morning; the draft itself is already visible in the review queue.
-    const shouldNotify = !dryRun
-      && results.some(result => result.status !== 'skipped_open_draft');
+    // A skipped cycle now advances the plan, so notifying about it cannot
+    // repeat every morning while the old draft waits for review.
+    const shouldNotify = !dryRun && results.length > 0;
 
     if (shouldNotify) {
       try {
