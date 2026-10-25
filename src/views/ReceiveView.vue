@@ -10,7 +10,7 @@ import StatCard from '@/components/ui/StatCard.vue';
 import { useNotificationStore } from '@/stores/notification';
 import { useOrderCountsStore } from '@/stores/order-counts';
 import { supabase } from '@/supabase/client';
-import { formatDate } from '@/utils/date';
+import { bangkokTodayIso, formatDate } from '@/utils/date';
 
 // ─────────────────────────────────────────────
 // Stores
@@ -91,11 +91,6 @@ function clearFilters(): void {
 /** Queued for this many days or more gets the overdue chip. */
 const OVERDUE_DAYS = 14;
 const MS_PER_DAY = 86_400_000;
-
-/** Today in Asia/Bangkok as `YYYY-MM-DD` (matches the reminder function). */
-function bangkokTodayIso(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
-}
 
 /** Whole days since an ISO order date, or 0 when the date is missing. */
 function daysOverdue(orderDate: string | null): number {

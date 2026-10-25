@@ -16,3 +16,11 @@ entrypoint = "./functions/send-telegram-notify/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/send-overdue-reminders/index.ts"
+
+# Automatic purchase-plan runs. JWT verification is disabled because pg_cron
+# calls it with x-cron-secret (see supabase/cron/auto-order-plans.sql); the
+# function also verifies signed-in users itself for the manual test button.
+[functions.generate-auto-orders]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/generate-auto-orders/index.ts"

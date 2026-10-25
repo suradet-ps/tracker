@@ -3,6 +3,7 @@ import type { RouteRecordRaw } from 'vue-router';
 import { createRouter, createWebHistory } from 'vue-router';
 import { supabase } from '@/supabase/client';
 import AuthView from '@/views/AuthView.vue';
+import AutoPlanView from '@/views/AutoPlanView.vue';
 import HistoryView from '@/views/HistoryView.vue';
 import OrderView from '@/views/OrderView.vue';
 import QuickOrderView from '@/views/QuickOrderView.vue';
@@ -31,6 +32,12 @@ const routes: readonly RouteRecordRaw[] = [
     name: 'QuickOrder',
     component: QuickOrderView,
     meta: { requiresAuth: true, title: 'สร้างใบสั่งซื้อด่วน' },
+  },
+  {
+    path: '/auto-plan',
+    name: 'AutoPlan',
+    component: AutoPlanView,
+    meta: { requiresAuth: true, title: 'แผนสั่งซื้ออัตโนมัติ' },
   },
   {
     path: '/',
