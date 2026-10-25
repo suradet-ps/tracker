@@ -25,14 +25,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
-          node-version: 24
-          cache: npm
+          bun-version: 1.3.1
 
       - name: Install Dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Setup Deno
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
@@ -43,13 +42,13 @@ jobs:
         run: deno check supabase/functions/*/index.ts
 
       - name: Linting & Formatting
-        run: npm run lint
+        run: bun run lint
 
       - name: Unit Tests
-        run: npm test
+        run: bun run test
 
       - name: Build Production
-        run: npm run build
+        run: bun run build
         env:
           # Public placeholders so the production build guard passes without
           # repository secrets in CI. Real values are injected in the deploy

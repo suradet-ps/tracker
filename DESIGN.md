@@ -330,7 +330,7 @@ hides its feature list before its headline.
 4. Default body copy to `--text-base`; emphatic copy to `--text-md` 500.
 5. Keep `--accent` (peach) for tints, highlights, and the auth panel only.
 6. Buttons are always pills; status is always a pill badge with a dot.
-7. Run `npm run lint`, `npm run type-check`, and `npm run build` before
+7. Run `bun run lint`, `bun run type-check`, and `bun run build` before
    committing.
 
 ---
