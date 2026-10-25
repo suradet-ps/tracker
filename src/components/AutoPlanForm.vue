@@ -67,16 +67,26 @@ function drugText(drug: DrugRow): string {
   return `${drug.name} ${drug.form ?? ''} ${drug.strength ?? ''}`.toLowerCase();
 }
 
+/**
+ * Searchable text is built once per drug list load, not on every keystroke,
+ * so typing stays smooth even when the catalog is large.
+ */
+const drugSearchIndex = computed<Array<{ drug: DrugRow; text: string }>>(
+  () => drugs.value.map(drug => ({ drug, text: drugText(drug) })),
+);
+
 const filteredDrugs = computed<DrugRow[]>(() => {
   const query = drugSearch.value.trim().toLowerCase();
+  const results: DrugRow[] = [];
 
-  return drugs.value
-    .filter((drug) => {
-      if (!query)
-        return true;
-      return drugText(drug).includes(query);
-    })
-    .slice(0, 60);
+  for (const entry of drugSearchIndex.value) {
+    if (results.length >= 60)
+      break;
+    if (!query || entry.text.includes(query))
+      results.push(entry.drug);
+  }
+
+  return results;
 });
 
 const monthlyUsage = computed<number>(() => {
@@ -103,8 +113,10 @@ const isValid = computed<boolean>(() =>
   && Number(form.pricePerUnit) > 0,
 );
 
+const activeDrugIdSet = computed<Set<number>>(() => new Set(props.activeDrugIds));
+
 function isDrugUnavailable(drug: DrugRow): boolean {
-  return drug.id !== props.plan?.drug_id && props.activeDrugIds.includes(drug.id);
+  return drug.id !== props.plan?.drug_id && activeDrugIdSet.value.has(drug.id);
 }
 
 async function loadDrugs(): Promise<void> {
@@ -554,7 +566,12 @@ onMounted(async () => {
   font-size: var(--text-xs);
 }
 
+/* Fixed height keeps the dialog from jumping while the user types. */
 .picker-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 190px;
   padding: 0.75rem;
   border: 1px dashed var(--border-strong);
   border-radius: var(--radius-sm);
@@ -564,7 +581,7 @@ onMounted(async () => {
 }
 
 .drug-picker {
-  max-height: 190px;
+  height: 190px;
   overflow-y: auto;
   margin: 0;
   padding: 0;

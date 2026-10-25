@@ -7,7 +7,7 @@ import type {
   AutoOrderRunWithRelations,
 } from '@/types/database';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import AutoPlanForm from '@/components/AutoPlanForm.vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
 import AppModal from '@/components/ui/AppModal.vue';
@@ -16,7 +16,7 @@ import StatCard from '@/components/ui/StatCard.vue';
 import { useNotificationStore } from '@/stores/notification';
 import { useOrderCountsStore } from '@/stores/order-counts';
 import { supabase } from '@/supabase/client';
-import { formatDate } from '@/utils/date';
+import { bangkokTodayIso, formatDate } from '@/utils/date';
 import { formatMoney, formatQuantity } from '@/utils/number';
 
 type StatusFilter = 'all' | 'active' | 'paused';
@@ -33,6 +33,10 @@ const loading = ref<boolean>(true);
 const error = ref<string | null>(null);
 const searchQuery = ref<string>('');
 const statusFilter = ref<StatusFilter>('all');
+const page = ref<number>(1);
+const pageSize = ref<number>(25);
+/** Cached Bangkok date; refreshed on every plan fetch. */
+const today = ref<string>(bangkokTodayIso());
 
 const showForm = ref<boolean>(false);
 const editingPlan = ref<AutoOrderPlanWithRelations | null>(null);
@@ -59,14 +63,9 @@ const MS_PER_DAY = 86_400_000;
 // Helpers
 // ─────────────────────────────────────────────
 
-/** Today in Asia/Bangkok as `YYYY-MM-DD`. */
-function bangkokTodayIso(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
-}
-
 function daysUntil(isoDate: string): number {
   return Math.round(
-    (Date.parse(`${isoDate}T00:00:00Z`) - Date.parse(`${bangkokTodayIso()}T00:00:00Z`)) / MS_PER_DAY,
+    (Date.parse(`${isoDate}T00:00:00Z`) - Date.parse(`${today.value}T00:00:00Z`)) / MS_PER_DAY,
   );
 }
 
@@ -80,11 +79,9 @@ function cycleValue(plan: AutoOrderPlanWithRelations): number {
   return orderQuantity(plan) * plan.price_per_unit;
 }
 
-function dueLabel(plan: AutoOrderPlanWithRelations): string | null {
+function dueLabel(plan: AutoOrderPlanWithRelations, days: number = daysUntil(plan.next_order_date)): string | null {
   if (!plan.is_active)
     return null;
-
-  const days = daysUntil(plan.next_order_date);
 
   if (days < 0)
     return `เลยกำหนด ${Math.abs(days)} วัน`;
@@ -184,12 +181,67 @@ const hasActiveFilter = computed<boolean>(
 );
 
 // ─────────────────────────────────────────────
+// Pagination
+// ─────────────────────────────────────────────
+
+const totalPages = computed<number>(
+  () => Math.max(1, Math.ceil(filteredPlans.value.length / pageSize.value)),
+);
+
+const pagedPlans = computed<AutoOrderPlanWithRelations[]>(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredPlans.value.slice(start, start + pageSize.value);
+});
+
+const rangeStart = computed<number>(
+  () => (filteredPlans.value.length === 0 ? 0 : (page.value - 1) * pageSize.value + 1),
+);
+
+const rangeEnd = computed<number>(
+  () => Math.min(page.value * pageSize.value, filteredPlans.value.length),
+);
+
+type PlanRowView = {
+  plan: AutoOrderPlanWithRelations;
+  quantity: number;
+  cycleValue: number;
+  nextDateLabel: string;
+  dueLabel: string | null;
+  isOverdue: boolean;
+};
+
+/** Everything the table needs, calculated once per visible row. */
+const planRows = computed<PlanRowView[]>(() =>
+  pagedPlans.value.map((plan) => {
+    const days = daysUntil(plan.next_order_date);
+    return {
+      plan,
+      quantity: orderQuantity(plan),
+      cycleValue: cycleValue(plan),
+      nextDateLabel: formatDate(plan.next_order_date),
+      dueLabel: dueLabel(plan, days),
+      isOverdue: plan.is_active && days < 0,
+    };
+  }),
+);
+
+watch([searchQuery, statusFilter, pageSize], () => {
+  page.value = 1;
+});
+
+watch(totalPages, (max: number) => {
+  if (page.value > max)
+    page.value = max;
+});
+
+// ─────────────────────────────────────────────
 // Data fetching
 // ─────────────────────────────────────────────
 
 async function fetchPlans(): Promise<void> {
   loading.value = true;
   error.value = null;
+  today.value = bangkokTodayIso();
 
   try {
     const { data, error: fetchError } = await supabase
@@ -579,41 +631,41 @@ onMounted(fetchPlans);
             </tr>
           </thead>
           <tbody>
-            <tr v-for="plan in filteredPlans" :key="plan.id" :class="{ 'is-paused': !plan.is_active }">
+            <tr v-for="row in planRows" :key="row.plan.id" :class="{ 'is-paused': !row.plan.is_active }">
               <td>
-                <span class="row-title">{{ plan.drugs.name }}</span>
+                <span class="row-title">{{ row.plan.drugs.name }}</span>
                 <span class="row-meta">
-                  {{ plan.drugs.form }} {{ plan.drugs.strength }}
-                  <template v-if="plan.packaging"> · {{ plan.packaging }}</template>
+                  {{ row.plan.drugs.form }} {{ row.plan.drugs.strength }}
+                  <template v-if="row.plan.packaging"> · {{ row.plan.packaging }}</template>
                 </span>
               </td>
-              <td>{{ plan.suppliers.name }}</td>
+              <td>{{ row.plan.suppliers.name }}</td>
               <td class="num">
-                {{ formatQuantity(plan.usage_quantity) }}
-                <span class="cell-meta">/ {{ plan.usage_months }} เดือน</span>
+                {{ formatQuantity(row.plan.usage_quantity) }}
+                <span class="cell-meta">/ {{ row.plan.usage_months }} เดือน</span>
               </td>
               <td class="num">
-                {{ plan.interval_months }} เดือน
+                {{ row.plan.interval_months }} เดือน
               </td>
               <td class="num">
-                <strong>{{ formatQuantity(orderQuantity(plan)) }}</strong> × {{ plan.unit_count }}
-                <span class="cell-meta">฿{{ formatMoney(cycleValue(plan)) }}</span>
+                <strong>{{ formatQuantity(row.quantity) }}</strong> × {{ row.plan.unit_count }}
+                <span class="cell-meta">฿{{ formatMoney(row.cycleValue) }}</span>
               </td>
               <td>
-                <span class="next-date">{{ formatDate(plan.next_order_date) }}</span>
+                <span class="next-date">{{ row.nextDateLabel }}</span>
                 <span
-                  v-if="dueLabel(plan)"
+                  v-if="row.dueLabel"
                   class="due-chip"
-                  :class="{ 'is-overdue': daysUntil(plan.next_order_date) < 0 }"
+                  :class="{ 'is-overdue': row.isOverdue }"
                 >
-                  {{ dueLabel(plan) }}
+                  {{ row.dueLabel }}
                 </span>
-                <span v-else-if="!plan.is_active" class="cell-meta">หยุดอยู่</span>
+                <span v-else-if="!row.plan.is_active" class="cell-meta">หยุดอยู่</span>
               </td>
               <td>
-                <span class="badge" :class="plan.is_active ? 'plan-active' : 'plan-paused'">
+                <span class="badge" :class="row.plan.is_active ? 'plan-active' : 'plan-paused'">
                   <span class="badge-dot" />
-                  {{ plan.is_active ? 'เปิดใช้งาน' : 'หยุดชั่วคราว' }}
+                  {{ row.plan.is_active ? 'เปิดใช้งาน' : 'หยุดชั่วคราว' }}
                 </span>
               </td>
               <td class="col-actions">
@@ -621,39 +673,39 @@ onMounted(fetchPlans);
                   <button
                     type="button"
                     class="btn btn-ghost btn-icon btn-sm"
-                    :disabled="!plan.is_active || isRunning"
-                    :title="`รันแผน ${plan.drugs.name} เดี๋ยวนี้`"
-                    :aria-label="`รันแผน ${plan.drugs.name} เดี๋ยวนี้`"
-                    @click="openRun(plan)"
+                    :disabled="!row.plan.is_active || isRunning"
+                    :title="`รันแผน ${row.plan.drugs.name} เดี๋ยวนี้`"
+                    :aria-label="`รันแผน ${row.plan.drugs.name} เดี๋ยวนี้`"
+                    @click="openRun(row.plan)"
                   >
                     <AppIcon name="play" :size="14" />
                   </button>
                   <button
                     type="button"
                     class="btn btn-subtle btn-icon btn-sm"
-                    :title="`แก้ไขแผน ${plan.drugs.name}`"
-                    :aria-label="`แก้ไขแผน ${plan.drugs.name}`"
-                    @click="openEdit(plan)"
+                    :title="`แก้ไขแผน ${row.plan.drugs.name}`"
+                    :aria-label="`แก้ไขแผน ${row.plan.drugs.name}`"
+                    @click="openEdit(row.plan)"
                   >
                     <AppIcon name="pencil" :size="14" />
                   </button>
                   <button
                     type="button"
                     class="btn btn-subtle btn-icon btn-sm"
-                    :disabled="togglingId === plan.id"
-                    :title="plan.is_active ? `หยุดแผน ${plan.drugs.name}` : `เปิดแผน ${plan.drugs.name}`"
-                    :aria-label="plan.is_active ? `หยุดแผน ${plan.drugs.name}` : `เปิดแผน ${plan.drugs.name}`"
-                    @click="togglePlan(plan)"
+                    :disabled="togglingId === row.plan.id"
+                    :title="row.plan.is_active ? `หยุดแผน ${row.plan.drugs.name}` : `เปิดแผน ${row.plan.drugs.name}`"
+                    :aria-label="row.plan.is_active ? `หยุดแผน ${row.plan.drugs.name}` : `เปิดแผน ${row.plan.drugs.name}`"
+                    @click="togglePlan(row.plan)"
                   >
-                    <span v-if="togglingId === plan.id" class="spinner spinner-sm" />
-                    <AppIcon v-else :name="plan.is_active ? 'pause' : 'play'" :size="14" />
+                    <span v-if="togglingId === row.plan.id" class="spinner spinner-sm" />
+                    <AppIcon v-else :name="row.plan.is_active ? 'pause' : 'play'" :size="14" />
                   </button>
                   <button
                     type="button"
                     class="btn btn-danger-soft btn-icon btn-sm"
-                    :title="`ลบแผน ${plan.drugs.name}`"
-                    :aria-label="`ลบแผน ${plan.drugs.name}`"
-                    @click="planToDelete = plan"
+                    :title="`ลบแผน ${row.plan.drugs.name}`"
+                    :aria-label="`ลบแผน ${row.plan.drugs.name}`"
+                    @click="planToDelete = row.plan"
                   >
                     <AppIcon name="trash" :size="14" />
                   </button>
@@ -662,6 +714,48 @@ onMounted(fetchPlans);
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Pagination -->
+      <div v-if="filteredPlans.length > 0" class="pagination">
+        <span>แสดง {{ rangeStart }}-{{ rangeEnd }} จาก {{ filteredPlans.length }} แผน</span>
+
+        <div class="page-controls">
+          <label class="page-size">
+            <span class="sr-only">จำนวนแผนต่อหน้า</span>
+            <select v-model.number="pageSize" class="form-select form-select-sm" aria-label="จำนวนแผนต่อหน้า">
+              <option :value="25">
+                25
+              </option>
+              <option :value="50">
+                50
+              </option>
+              <option :value="100">
+                100
+              </option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            class="btn btn-ghost btn-icon btn-sm"
+            aria-label="หน้าก่อนหน้า"
+            :disabled="page <= 1"
+            @click="page -= 1"
+          >
+            <AppIcon name="chevronLeft" :size="15" />
+          </button>
+          <span class="page-indicator">{{ page }} / {{ totalPages }}</span>
+          <button
+            type="button"
+            class="btn btn-ghost btn-icon btn-sm"
+            aria-label="หน้าถัดไป"
+            :disabled="page >= totalPages"
+            @click="page += 1"
+          >
+            <AppIcon name="chevronRight" :size="15" />
+          </button>
+        </div>
       </div>
     </template>
 
@@ -849,6 +943,12 @@ onMounted(fetchPlans);
 <style scoped>
 .plan-table {
   min-width: 1040px;
+}
+
+.page-size .form-select-sm {
+  min-height: 32px;
+  padding: 0.2rem 1.9rem 0.2rem 0.6rem;
+  font-size: var(--text-sm);
 }
 
 .data-table tbody tr.is-paused {
