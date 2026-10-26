@@ -145,6 +145,7 @@ export type Database = {
           usage_quantity: number;
           usage_months: number;
           interval_months: number;
+          order_quantity: number | null;
           next_order_date: string;
           unit_count: string;
           packaging: string | null;
@@ -160,6 +161,7 @@ export type Database = {
           usage_quantity: number;
           usage_months: number;
           interval_months: number;
+          order_quantity?: number | null;
           next_order_date: string;
           unit_count: string;
           packaging?: string | null;
@@ -175,6 +177,7 @@ export type Database = {
           usage_quantity?: number;
           usage_months?: number;
           interval_months?: number;
+          order_quantity?: number | null;
           next_order_date?: string;
           unit_count?: string;
           packaging?: string | null;
@@ -340,7 +343,7 @@ export type HistoryViewOrder
 
 /** Auto-order plan with the joined drug and supplier rows. */
 export type AutoOrderPlanWithRelations
-  = Pick<AutoOrderPlanRow, 'id' | 'drug_id' | 'usage_quantity' | 'usage_months' | 'interval_months' | 'next_order_date' | 'unit_count' | 'packaging' | 'price_per_unit' | 'is_active' | 'created_at' | 'updated_at'>
+  = Pick<AutoOrderPlanRow, 'id' | 'drug_id' | 'usage_quantity' | 'usage_months' | 'interval_months' | 'order_quantity' | 'next_order_date' | 'unit_count' | 'packaging' | 'price_per_unit' | 'is_active' | 'created_at' | 'updated_at'>
     & {
       drugs: DrugRow;
       suppliers: SupplierRow;

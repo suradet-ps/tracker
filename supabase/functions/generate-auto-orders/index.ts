@@ -33,6 +33,7 @@ interface PlanRow {
   usage_quantity: number;
   usage_months: number;
   interval_months: number;
+  order_quantity: number | null;
   next_order_date: string;
   unit_count: string;
   packaging: string | null;
@@ -61,6 +62,7 @@ const PLAN_SELECT = [
   'usage_quantity',
   'usage_months',
   'interval_months',
+  'order_quantity',
   'next_order_date',
   'unit_count',
   'packaging',
@@ -117,10 +119,16 @@ function nextDueDate(previous: string, today: string, intervalMonths: number): s
 // ─────────────────────────────────────────────
 
 /**
- * Quantity for one cycle: average monthly usage × interval, rounded up so the
- * plan never under-orders. Mirrors the preview in the Tracker UI.
+ * Quantity for one cycle: the user's explicit override when set, otherwise
+ * average monthly usage × interval, rounded up so the plan never under-orders.
+ * Mirrors `src/utils/auto-plan.ts` and the preview in the Tracker UI.
  */
 function orderQuantity(plan: PlanRow): number {
+  const override = Number(plan.order_quantity);
+
+  if (plan.order_quantity != null && Number.isFinite(override) && override > 0)
+    return override;
+
   const monthly = plan.usage_quantity / plan.usage_months;
   return Math.max(1, Math.ceil(monthly * plan.interval_months));
 }

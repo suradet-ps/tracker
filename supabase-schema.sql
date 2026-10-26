@@ -93,6 +93,7 @@ create table if not exists public.auto_order_plans (
   usage_quantity numeric not null check (usage_quantity > 0),
   usage_months integer not null check (usage_months > 0),
   interval_months integer not null check (interval_months > 0),
+  order_quantity numeric check (order_quantity > 0),
   next_order_date date not null,
   unit_count text not null default '-',
   packaging text,
@@ -202,3 +203,10 @@ create policy "Allow full access for authenticated users"
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 2026-10-25: added auto_order_plans and auto_order_runs for the automatic
 --             purchase-plan feature (draft orders + Telegram review alert).
+-- 2026-10-26: allow an explicit per-cycle quantity on automatic plans.
+--             NULL keeps the calculated quantity, so existing plans are
+--             unchanged.
+alter table public.auto_order_plans
+  add column if not exists order_quantity numeric check (order_quantity > 0);
+
+comment on column public.auto_order_plans.order_quantity is 'จำนวนที่ผู้ใช้กำหนดต่อรอบ (null = คำนวณอัตโนมัติจากยอดใช้ย้อนหลัง)';

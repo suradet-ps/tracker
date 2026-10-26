@@ -6,6 +6,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
 import AppModal from '@/components/ui/AppModal.vue';
 import { supabase } from '@/supabase/client';
+import { calculateOrderQuantity } from '@/utils/auto-plan';
 import { formatQuantity } from '@/utils/number';
 
 const props = defineProps<{
@@ -30,6 +31,11 @@ type LatestOrderContext = {
 const INTERVAL_OPTIONS = [1, 2, 3, 4, 6, 12] as const;
 
 const isEditing = computed<boolean>(() => Boolean(props.plan));
+
+/** Whether the user wants an explicit quantity instead of the calculation. */
+const usesCustomQuantity = ref<boolean>(props.plan?.order_quantity != null);
+/** Kept raw so clearing the field does not snap back to zero. */
+const customQuantity = ref<number | string>(props.plan?.order_quantity ?? '');
 
 const form = reactive({
   drugId: props.plan?.drug_id ?? null as number | null,
@@ -96,10 +102,43 @@ const monthlyUsage = computed<number>(() => {
   return Number(form.usageQuantity) / months;
 });
 
-const orderQuantity = computed<number>(() => {
-  if (!Number.isFinite(monthlyUsage.value) || monthlyUsage.value <= 0)
-    return 0;
-  return Math.max(1, Math.ceil(monthlyUsage.value * Number(form.intervalMonths)));
+/** What the plan would order from the usage inputs alone. */
+const calculatedQuantity = computed<number>(() =>
+  calculateOrderQuantity(
+    Number(form.usageQuantity),
+    Number(form.usageMonths),
+    Number(form.intervalMonths),
+  ),
+);
+
+/** The editable field: custom while enabled, the calculation while auto. */
+const quantityValue = computed<number | string>({
+  get: () => {
+    if (usesCustomQuantity.value)
+      return customQuantity.value;
+    return calculatedQuantity.value > 0 ? calculatedQuantity.value : '';
+  },
+  set: (value: number | string) => {
+    customQuantity.value = value;
+  },
+});
+
+const customQuantityNumber = computed<number>(() => Number(customQuantity.value));
+
+const hasValidCustomQuantity = computed<boolean>(() => {
+  if (!usesCustomQuantity.value)
+    return true;
+
+  return String(customQuantity.value).trim() !== ''
+    && Number.isFinite(customQuantityNumber.value)
+    && customQuantityNumber.value > 0;
+});
+
+/** Number shown in the calculation preview; null renders as a dash. */
+const previewQuantity = computed<number | null>(() => {
+  if (!usesCustomQuantity.value)
+    return calculatedQuantity.value > 0 ? calculatedQuantity.value : null;
+  return hasValidCustomQuantity.value ? customQuantityNumber.value : null;
 });
 
 const isValid = computed<boolean>(() =>
@@ -110,8 +149,18 @@ const isValid = computed<boolean>(() =>
   && Boolean(form.nextOrderDate)
   && form.supplierName.trim().length > 0
   && form.unitCount.trim().length > 0
-  && Number(form.pricePerUnit) > 0,
+  && Number(form.pricePerUnit) > 0
+  && hasValidCustomQuantity.value,
 );
+
+/** Switching to a custom quantity starts from the calculated suggestion. */
+function toggleCustomQuantity(event: Event): void {
+  const checked = (event.target as HTMLInputElement).checked;
+  usesCustomQuantity.value = checked;
+
+  if (checked)
+    customQuantity.value = calculatedQuantity.value > 0 ? calculatedQuantity.value : '';
+}
 
 const activeDrugIdSet = computed<Set<number>>(() => new Set(props.activeDrugIds));
 
@@ -265,6 +314,7 @@ async function handleSubmit(): Promise<void> {
       usage_quantity: Number(form.usageQuantity),
       usage_months: Number(form.usageMonths),
       interval_months: Number(form.intervalMonths),
+      order_quantity: usesCustomQuantity.value ? Number(customQuantity.value) : null,
       next_order_date: form.nextOrderDate,
       unit_count: form.unitCount.trim() || '-',
       packaging: form.packaging.trim() || null,
@@ -318,7 +368,8 @@ onMounted(async () => {
       <p class="form-note">
         ระบบจะสร้างใบสั่งซื้อฉบับร่าง (สถานะ <strong>ต้องสั่งซื้อ</strong>)
         ตามยอดใช้ย้อนหลังและรอบที่กำหนด แล้วแจ้งเตือน Telegram ให้เภสัชกรตรวจสอบ
-        โดยไม่ส่งถึงบริษัทโดยตรง
+        โดยไม่ส่งถึงบริษัทโดยตรง - จำนวนต่อครั้งใช้ค่าคำนวณอัตโนมัติ
+        หรือกำหนดเองเพื่อให้ตรงกับหน่วยจัดซื้อก็ได้
       </p>
 
       <!-- Drug picker -->
@@ -433,6 +484,38 @@ onMounted(async () => {
           </select>
         </div>
 
+        <div class="form-group quantity-group">
+          <div class="quantity-head">
+            <label class="form-label" for="auto-order-quantity">จำนวน/ครั้ง <span class="required">*</span></label>
+            <label class="custom-toggle">
+              <input
+                type="checkbox"
+                :checked="usesCustomQuantity"
+                @change="toggleCustomQuantity"
+              >
+              กำหนดเอง
+            </label>
+          </div>
+          <input
+            id="auto-order-quantity"
+            v-model="quantityValue"
+            type="number"
+            min="0.01"
+            step="0.01"
+            class="form-input"
+            :disabled="!usesCustomQuantity"
+            :required="usesCustomQuantity"
+          >
+          <p class="form-hint">
+            <template v-if="usesCustomQuantity">
+              กำหนดจำนวนเอง (ค่าคำนวณอัตโนมัติ {{ formatQuantity(calculatedQuantity) }} {{ form.unitCount || 'หน่วย' }})
+            </template>
+            <template v-else>
+              ใช้ค่าคำนวณจากยอดใช้ย้อนหลัง
+            </template>
+          </p>
+        </div>
+
         <div class="form-group">
           <label class="form-label" for="auto-next-date">สร้างร่างครั้งถัดไป <span class="required">*</span></label>
           <input
@@ -503,8 +586,11 @@ onMounted(async () => {
         <span class="preview-label">ตัวอย่างการคำนวณ</span>
         <p class="preview-line">
           ใช้เฉลี่ย <strong>{{ formatQuantity(monthlyUsage) }}</strong> {{ form.unitCount || 'หน่วย' }}/เดือน
-          → สร้างครั้งละ <strong>{{ formatQuantity(orderQuantity) }}</strong> {{ form.unitCount || 'หน่วย' }}
+          → สร้างครั้งละ <strong>{{ formatQuantity(previewQuantity) }}</strong> {{ form.unitCount || 'หน่วย' }}
           ทุก <strong>{{ form.intervalMonths }}</strong> เดือน
+        </p>
+        <p v-if="usesCustomQuantity" class="preview-note">
+          จำนวนนี้กำหนดเอง (ค่าคำนวณอัตโนมัติ {{ formatQuantity(calculatedQuantity) }} {{ form.unitCount || 'หน่วย' }})
         </p>
       </div>
 
@@ -543,6 +629,32 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 0.9rem 1rem;
+}
+
+.quantity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.custom-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.custom-toggle input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--primary);
 }
 
 .required {
@@ -657,6 +769,12 @@ onMounted(async () => {
 .preview-line strong {
   color: var(--text);
   font-variant-numeric: tabular-nums;
+}
+
+.preview-note {
+  margin-top: 0.35rem;
+  color: var(--text-3);
+  font-size: var(--text-xs);
 }
 
 .btn-primary .spinner-sm {

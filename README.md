@@ -97,7 +97,10 @@ creates draft orders in `ต้องสั่งซื้อ`, then notifies th
    The job runs daily at 08:00 Asia/Bangkok.
 
 The page also has a dry-run button, so a plan can be tested without
-writing orders or sending Telegram.
+writing orders or sending Telegram. Each plan uses the calculated
+quantity by default; tick "กำหนดเอง" in the plan form to store an explicit
+`order_quantity` per cycle (for example, to match a supplier's pack size).
+Run `supabase-schema.sql` before deploying so the column exists.
 
 </details>
 
