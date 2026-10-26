@@ -108,7 +108,6 @@ comment on table public.auto_order_plans is 'แผนสั่งซื้อ�
 comment on column public.auto_order_plans.usage_quantity is 'ยอดใช้ย้อนหลังที่ผู้ใช้กรอก (จำนวน)';
 comment on column public.auto_order_plans.usage_months is 'จำนวนเดือนของยอดใช้ย้อนหลัง';
 comment on column public.auto_order_plans.interval_months is 'รอบการสร้างร่างใบสั่งซื้อ (เดือน)';
-comment on column public.auto_order_plans.order_quantity is 'จำนวนที่ผู้ใช้กำหนดต่อรอบ (null = คำนวณอัตโนมัติจากยอดใช้ย้อนหลัง)';
 comment on column public.auto_order_plans.next_order_date is 'วันที่ระบบจะสร้างร่างใบสั่งซื้อครั้งถัดไป';
 
 -- Only one active plan per drug; paused plans are kept for history/editing.
