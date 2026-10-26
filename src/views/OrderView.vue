@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import type { GroupedOrders, OrderViewOrder } from '@/types/database';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onActivated, onDeactivated, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import AddOrderForm from '@/components/AddOrderForm.vue';
 import OrderSummaryModal from '@/components/OrderSummaryModal.vue';
@@ -14,6 +14,8 @@ import { useNotificationStore } from '@/stores/notification';
 import { useOrderCountsStore } from '@/stores/order-counts';
 import { supabase } from '@/supabase/client';
 import { formatMoney, formatQuantity } from '@/utils/number';
+
+defineOptions({ name: 'OrderView' });
 
 type SortKey = 'name' | 'supplier' | 'quantity' | 'total';
 type SortDirection = 'asc' | 'desc';
@@ -45,6 +47,8 @@ const searchQuery = ref<string>('');
 const supplierFilter = ref<string>('');
 const sortKey = ref<SortKey>('name');
 const sortDirection = ref<SortDirection>('asc');
+const page = ref<number>(1);
+const pageSize = ref<number>(25);
 
 // ─────────────────────────────────────────────
 // Computed
@@ -105,15 +109,45 @@ const singleCancelOrder = computed<OrderViewOrder | null>(() =>
   ordersToCancel.value.length === 1 ? (ordersToCancel.value[0] ?? null) : null,
 );
 
-const isAllVisibleSelected = computed<boolean>(() =>
-  visibleOrders.value.length > 0
-  && visibleOrders.value.every(order => selectedOrderIds.value.has(order.id)),
+// ─────────────────────────────────────────────
+// Pagination
+// ─────────────────────────────────────────────
+
+const totalPages = computed<number>(
+  () => Math.max(1, Math.ceil(visibleOrders.value.length / pageSize.value)),
 );
 
-const isSomeVisibleSelected = computed<boolean>(() =>
-  !isAllVisibleSelected.value
-  && visibleOrders.value.some(order => selectedOrderIds.value.has(order.id)),
+const pagedOrders = computed<OrderViewOrder[]>(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return visibleOrders.value.slice(start, start + pageSize.value);
+});
+
+const rangeStart = computed<number>(
+  () => (visibleOrders.value.length === 0 ? 0 : (page.value - 1) * pageSize.value + 1),
 );
+
+const rangeEnd = computed<number>(
+  () => Math.min(page.value * pageSize.value, visibleOrders.value.length),
+);
+
+const isAllPageSelected = computed<boolean>(() =>
+  pagedOrders.value.length > 0
+  && pagedOrders.value.every(order => selectedOrderIds.value.has(order.id)),
+);
+
+const isSomePageSelected = computed<boolean>(() =>
+  !isAllPageSelected.value
+  && pagedOrders.value.some(order => selectedOrderIds.value.has(order.id)),
+);
+
+watch([searchQuery, supplierFilter, sortKey, sortDirection, pageSize], () => {
+  page.value = 1;
+});
+
+watch(totalPages, (max: number) => {
+  if (page.value > max)
+    page.value = max;
+});
 
 /**
  * Groups the currently selected orders by supplier name.
@@ -217,12 +251,12 @@ function clearFilters(): void {
   supplierFilter.value = '';
 }
 
-/** Selects or deselects every row currently visible under the filters. */
+/** Selects or deselects every row on the current page. */
 function toggleSelectAllVisible(event: Event): void {
   const checked = (event.target as HTMLInputElement).checked;
   const next = new Set(selectedOrderIds.value);
 
-  for (const order of visibleOrders.value) {
+  for (const order of pagedOrders.value) {
     if (checked)
       next.add(order.id);
     else
@@ -375,7 +409,15 @@ function handleOrdersSent(): void {
 // Lifecycle
 // ─────────────────────────────────────────────
 
-onMounted(fetchOrdersToBuy);
+// The view is kept alive between routes; refetch in the background so the
+// cached table can paint instantly and then reconcile with fresh data.
+onActivated(fetchOrdersToBuy);
+
+onDeactivated(() => {
+  showAddForm.value = false;
+  isModalVisible.value = false;
+  ordersToCancel.value = [];
+});
 </script>
 
 <template>
@@ -402,8 +444,8 @@ onMounted(fetchOrdersToBuy);
       </div>
     </header>
 
-    <!-- Loading -->
-    <div v-if="loading" class="state-block" aria-busy="true">
+    <!-- Loading (first paint only: cached rows stay visible on refresh) -->
+    <div v-if="loading && orders.length === 0" class="state-block" aria-busy="true">
       <span class="spinner" />
       <p class="state-title">
         กำลังโหลดรายการ...
@@ -415,7 +457,7 @@ onMounted(fetchOrdersToBuy);
 
     <!-- Error -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="error && orders.length === 0"
       is-error
       icon="alertCircle"
       title="โหลดรายการไม่สำเร็จ"
@@ -445,6 +487,12 @@ onMounted(fetchOrdersToBuy);
     </EmptyState>
 
     <template v-else>
+      <!-- Background refresh failed: keep the queue usable and explain. -->
+      <div v-if="error" class="alert alert-error alert-inline" role="alert">
+        <AppIcon name="alertCircle" :size="17" />
+        <span>{{ error }}</span>
+      </div>
+
       <!-- Queue metrics -->
       <div class="stat-grid">
         <StatCard label="รายการค้างสั่ง" :value="orders.length" hint="รอสร้างใบสั่งซื้อ" icon="clipboardList" />
@@ -497,98 +545,142 @@ onMounted(fetchOrdersToBuy);
         </button>
       </EmptyState>
 
-      <!-- Queue table -->
-      <div v-else class="table-wrap">
-        <table class="data-table">
-          <caption class="sr-only">
-            รายการยาที่ต้องสั่งซื้อ
-          </caption>
-          <thead>
-            <tr>
-              <th class="col-check" scope="col">
-                <input
-                  class="table-checkbox"
-                  type="checkbox"
-                  :checked="isAllVisibleSelected"
-                  :indeterminate="isSomeVisibleSelected"
-                  aria-label="เลือกทุกรายการที่แสดงอยู่"
-                  @change="toggleSelectAllVisible"
-                >
-              </th>
-              <th scope="col" class="sortable" :aria-sort="ariaSort('name')">
-                <button type="button" class="sort-button" :class="{ 'is-active': sortKey === 'name' }" @click="toggleSort('name')">
-                  ชื่อยา
-                  <AppIcon :name="sortIcon('name')" :size="13" class="sort-icon" />
-                </button>
-              </th>
-              <th scope="col" class="sortable" :aria-sort="ariaSort('supplier')">
-                <button type="button" class="sort-button" :class="{ 'is-active': sortKey === 'supplier' }" @click="toggleSort('supplier')">
-                  บริษัท
-                  <AppIcon :name="sortIcon('supplier')" :size="13" class="sort-icon" />
-                </button>
-              </th>
-              <th scope="col" class="sortable num" :aria-sort="ariaSort('quantity')">
-                <button type="button" class="sort-button sort-button-num" :class="{ 'is-active': sortKey === 'quantity' }" @click="toggleSort('quantity')">
-                  จำนวน
-                  <AppIcon :name="sortIcon('quantity')" :size="13" class="sort-icon" />
-                </button>
-              </th>
-              <th scope="col" class="sortable num" :aria-sort="ariaSort('total')">
-                <button type="button" class="sort-button sort-button-num" :class="{ 'is-active': sortKey === 'total' }" @click="toggleSort('total')">
-                  ราคารวม
-                  <AppIcon :name="sortIcon('total')" :size="13" class="sort-icon" />
-                </button>
-              </th>
-              <th class="col-actions" scope="col">
-                <span class="sr-only">การจัดการ</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="order in visibleOrders"
-              :key="order.id"
-              :class="{ 'is-selected': selectedOrderIds.has(order.id) }"
+      <template v-else>
+        <!-- Queue table -->
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption class="sr-only">
+              รายการยาที่ต้องสั่งซื้อ
+            </caption>
+            <thead>
+              <tr>
+                <th class="col-check" scope="col">
+                  <input
+                    class="table-checkbox"
+                    type="checkbox"
+                    :checked="isAllPageSelected"
+                    :indeterminate="isSomePageSelected"
+                    aria-label="เลือกทุกรายการในหน้านี้"
+                    @change="toggleSelectAllVisible"
+                  >
+                </th>
+                <th scope="col" class="sortable" :aria-sort="ariaSort('name')">
+                  <button type="button" class="sort-button" :class="{ 'is-active': sortKey === 'name' }" @click="toggleSort('name')">
+                    ชื่อยา
+                    <AppIcon :name="sortIcon('name')" :size="13" class="sort-icon" />
+                  </button>
+                </th>
+                <th scope="col" class="sortable" :aria-sort="ariaSort('supplier')">
+                  <button type="button" class="sort-button" :class="{ 'is-active': sortKey === 'supplier' }" @click="toggleSort('supplier')">
+                    บริษัท
+                    <AppIcon :name="sortIcon('supplier')" :size="13" class="sort-icon" />
+                  </button>
+                </th>
+                <th scope="col" class="sortable num" :aria-sort="ariaSort('quantity')">
+                  <button type="button" class="sort-button sort-button-num" :class="{ 'is-active': sortKey === 'quantity' }" @click="toggleSort('quantity')">
+                    จำนวน
+                    <AppIcon :name="sortIcon('quantity')" :size="13" class="sort-icon" />
+                  </button>
+                </th>
+                <th scope="col" class="sortable num" :aria-sort="ariaSort('total')">
+                  <button type="button" class="sort-button sort-button-num" :class="{ 'is-active': sortKey === 'total' }" @click="toggleSort('total')">
+                    ราคารวม
+                    <AppIcon :name="sortIcon('total')" :size="13" class="sort-icon" />
+                  </button>
+                </th>
+                <th class="col-actions" scope="col">
+                  <span class="sr-only">การจัดการ</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="order in pagedOrders"
+                :key="order.id"
+                :class="{ 'is-selected': selectedOrderIds.has(order.id) }"
+              >
+                <td class="col-check">
+                  <input
+                    class="table-checkbox"
+                    type="checkbox"
+                    :checked="selectedOrderIds.has(order.id)"
+                    :aria-label="`เลือก ${order.drugs.name}`"
+                    @change="toggleSelection(order.id)"
+                  >
+                </td>
+                <td>
+                  <span class="row-title">{{ order.drugs.name }}</span>
+                  <span class="row-meta">
+                    {{ order.drugs.form }} {{ order.drugs.strength }}
+                    <template v-if="order.packaging"> · {{ order.packaging }}</template>
+                  </span>
+                </td>
+                <td>{{ order.suppliers.name }}</td>
+                <td class="num">
+                  {{ formatQuantity(order.quantity) }} × {{ order.unit_count }}
+                </td>
+                <td class="num">
+                  <strong>{{ formatMoney(order.total_price) }}</strong>
+                </td>
+                <td class="col-actions">
+                  <button
+                    type="button"
+                    class="btn btn-danger-soft btn-icon btn-sm"
+                    :disabled="isCancelling"
+                    :title="`ยกเลิกรายการ ${order.drugs.name}`"
+                    :aria-label="`ยกเลิกรายการ ${order.drugs.name}`"
+                    @click="requestCancel(order)"
+                  >
+                    <AppIcon name="x" :size="15" />
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          <span>แสดง {{ rangeStart }}-{{ rangeEnd }} จาก {{ visibleOrders.length }} รายการ</span>
+
+          <div class="page-controls">
+            <label class="page-size">
+              <span class="sr-only">จำนวนรายการต่อหน้า</span>
+              <select v-model.number="pageSize" class="form-select form-select-sm" aria-label="จำนวนรายการต่อหน้า">
+                <option :value="25">
+                  25
+                </option>
+                <option :value="50">
+                  50
+                </option>
+                <option :value="100">
+                  100
+                </option>
+              </select>
+            </label>
+
+            <button
+              type="button"
+              class="btn btn-ghost btn-icon btn-sm"
+              aria-label="หน้าก่อนหน้า"
+              :disabled="page <= 1"
+              @click="page -= 1"
             >
-              <td class="col-check">
-                <input
-                  class="table-checkbox"
-                  type="checkbox"
-                  :checked="selectedOrderIds.has(order.id)"
-                  :aria-label="`เลือก ${order.drugs.name}`"
-                  @change="toggleSelection(order.id)"
-                >
-              </td>
-              <td>
-                <span class="row-title">{{ order.drugs.name }}</span>
-                <span class="row-meta">
-                  {{ order.drugs.form }} {{ order.drugs.strength }}
-                  <template v-if="order.packaging"> · {{ order.packaging }}</template>
-                </span>
-              </td>
-              <td>{{ order.suppliers.name }}</td>
-              <td class="num">
-                {{ formatQuantity(order.quantity) }} × {{ order.unit_count }}
-              </td>
-              <td class="num">
-                <strong>{{ formatMoney(order.total_price) }}</strong>
-              </td>
-              <td class="col-actions">
-                <button
-                  type="button"
-                  class="btn btn-danger-soft btn-icon btn-sm"
-                  :disabled="isCancelling"
-                  :title="`ยกเลิกรายการ ${order.drugs.name}`"
-                  :aria-label="`ยกเลิกรายการ ${order.drugs.name}`"
-                  @click="requestCancel(order)"
-                >
-                  <AppIcon name="x" :size="15" />
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+              <AppIcon name="chevronLeft" :size="15" />
+            </button>
+            <span class="page-indicator">{{ page }} / {{ totalPages }}</span>
+            <button
+              type="button"
+              class="btn btn-ghost btn-icon btn-sm"
+              aria-label="หน้าถัดไป"
+              :disabled="page >= totalPages"
+              @click="page += 1"
+            >
+              <AppIcon name="chevronRight" :size="15" />
+            </button>
+          </div>
+        </div>
+      </template>
     </template>
 
     <!-- Bulk action bar -->

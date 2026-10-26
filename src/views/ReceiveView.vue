@@ -2,7 +2,7 @@
 <script setup lang="ts">
 import type { ReceivableOrder, ReceiveViewOrder } from '@/types/database';
 
-import { computed, onMounted, ref } from 'vue';
+import { computed, onActivated, onDeactivated, ref, watch } from 'vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
 import AppModal from '@/components/ui/AppModal.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
@@ -10,7 +10,9 @@ import StatCard from '@/components/ui/StatCard.vue';
 import { useNotificationStore } from '@/stores/notification';
 import { useOrderCountsStore } from '@/stores/order-counts';
 import { supabase } from '@/supabase/client';
-import { formatDate } from '@/utils/date';
+import { bangkokTodayIso, formatDate } from '@/utils/date';
+
+defineOptions({ name: 'ReceiveView' });
 
 // ─────────────────────────────────────────────
 // Stores
@@ -26,6 +28,8 @@ const countsStore = useOrderCountsStore();
 const orders = ref<ReceivableOrder[]>([]);
 const searchQuery = ref<string>('');
 const supplierFilter = ref<string>('');
+const page = ref<number>(1);
+const pageSize = ref<number>(25);
 const loading = ref<boolean>(true);
 const error = ref<string | null>(null);
 /** Order awaiting confirmation in the cancel dialog, if any. */
@@ -79,6 +83,36 @@ const hasActiveFilter = computed<boolean>(
 );
 
 // ─────────────────────────────────────────────
+// Pagination
+// ─────────────────────────────────────────────
+
+const totalPages = computed<number>(
+  () => Math.max(1, Math.ceil(filteredOrders.value.length / pageSize.value)),
+);
+
+const pagedOrders = computed<ReceivableOrder[]>(() => {
+  const start = (page.value - 1) * pageSize.value;
+  return filteredOrders.value.slice(start, start + pageSize.value);
+});
+
+const rangeStart = computed<number>(
+  () => (filteredOrders.value.length === 0 ? 0 : (page.value - 1) * pageSize.value + 1),
+);
+
+const rangeEnd = computed<number>(
+  () => Math.min(page.value * pageSize.value, filteredOrders.value.length),
+);
+
+watch([searchQuery, supplierFilter, pageSize], () => {
+  page.value = 1;
+});
+
+watch(totalPages, (max: number) => {
+  if (page.value > max)
+    page.value = max;
+});
+
+// ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
 
@@ -91,11 +125,6 @@ function clearFilters(): void {
 /** Queued for this many days or more gets the overdue chip. */
 const OVERDUE_DAYS = 14;
 const MS_PER_DAY = 86_400_000;
-
-/** Today in Asia/Bangkok as `YYYY-MM-DD` (matches the reminder function). */
-function bangkokTodayIso(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
-}
 
 /** Whole days since an ISO order date, or 0 when the date is missing. */
 function daysOverdue(orderDate: string | null): number {
@@ -146,7 +175,17 @@ async function fetchOrdersToReceive(): Promise<void> {
     if (dbError)
       throw dbError;
 
-    orders.value = ((data ?? []) as unknown as ReceiveViewOrder[]).map(toReceivableOrder);
+    // A background refresh can land while the user is typing receipt dates.
+    // Carry those unsaved values across the replacement by order id.
+    const pendingInputs = new Map(
+      orders.value.map(order => [order.id, order.received_date_input]),
+    );
+
+    orders.value = ((data ?? []) as unknown as ReceiveViewOrder[]).map((row) => {
+      const order = toReceivableOrder(row);
+      order.received_date_input = pendingInputs.get(row.id) ?? '';
+      return order;
+    });
 
     // Never leave the supplier filter pointing at a name that no longer exists.
     if (supplierFilter.value && !supplierNames.value.includes(supplierFilter.value)) {
@@ -296,7 +335,12 @@ async function confirmCancel(): Promise<void> {
 // Lifecycle
 // ─────────────────────────────────────────────
 
-onMounted(fetchOrdersToReceive);
+// Kept alive between routes: paint the cached queue, then refresh silently.
+onActivated(fetchOrdersToReceive);
+
+onDeactivated(() => {
+  orderToCancel.value = null;
+});
 </script>
 
 <template>
@@ -318,8 +362,8 @@ onMounted(fetchOrdersToReceive);
       </div>
     </header>
 
-    <!-- Loading -->
-    <div v-if="loading" class="state-block" aria-busy="true">
+    <!-- Loading (first paint only: cached rows stay visible on refresh) -->
+    <div v-if="loading && orders.length === 0" class="state-block" aria-busy="true">
       <span class="spinner" />
       <p class="state-title">
         กำลังโหลดรายการรอรับของ...
@@ -331,7 +375,7 @@ onMounted(fetchOrdersToReceive);
 
     <!-- Error -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="error && orders.length === 0"
       is-error
       icon="alertCircle"
       title="โหลดรายการไม่สำเร็จ"
@@ -352,6 +396,12 @@ onMounted(fetchOrdersToReceive);
     />
 
     <template v-else>
+      <!-- Background refresh failed: keep the queue usable and explain. -->
+      <div v-if="error" class="alert alert-error alert-inline" role="alert">
+        <AppIcon name="alertCircle" :size="17" />
+        <span>{{ error }}</span>
+      </div>
+
       <!-- Queue metrics -->
       <div class="stat-grid">
         <StatCard label="รอรับของ" :value="orders.length" hint="รายการที่สั่งแล้ว" icon="truck" />
@@ -404,98 +454,142 @@ onMounted(fetchOrdersToReceive);
         </button>
       </EmptyState>
 
-      <!-- Receive table -->
-      <div v-else class="table-wrap">
-        <table class="data-table">
-          <caption class="sr-only">
-            รายการที่สั่งซื้อแล้วและรอการยืนยันรับของ
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">
-                ชื่อยา
-              </th>
-              <th scope="col">
-                บริษัท
-              </th>
-              <th scope="col">
-                วันที่สั่งซื้อ
-              </th>
-              <th scope="col">
-                วันที่รับของ
-              </th>
-              <th scope="col" class="col-actions">
-                <span class="sr-only">การจัดการ</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="order in filteredOrders" :key="order.id">
-              <td>
-                <span class="row-title">{{ order.drugs.name }}</span>
-                <span class="row-meta">
-                  {{ order.drugs.form }} {{ order.drugs.strength }}
-                  <template v-if="order.packaging"> · {{ order.packaging }}</template>
-                </span>
-              </td>
-              <td>{{ order.suppliers.name }}</td>
-              <td>
-                {{ formatDate(order.order_date) }}
-                <span
-                  v-if="daysOverdue(order.order_date) >= OVERDUE_DAYS"
-                  class="overdue-chip"
-                >
-                  ค้าง {{ daysOverdue(order.order_date) }} วัน
-                </span>
-              </td>
-              <td>
-                <div class="date-cell">
-                  <input
-                    v-model="order.received_date_input"
-                    type="date"
-                    class="form-input form-input-sm"
-                    :max="todayIso()"
-                    :aria-label="`วันที่รับของ ${order.drugs.name}`"
+      <template v-else>
+        <!-- Receive table -->
+        <div class="table-wrap">
+          <table class="data-table">
+            <caption class="sr-only">
+              รายการที่สั่งซื้อแล้วและรอการยืนยันรับของ
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">
+                  ชื่อยา
+                </th>
+                <th scope="col">
+                  บริษัท
+                </th>
+                <th scope="col">
+                  วันที่สั่งซื้อ
+                </th>
+                <th scope="col">
+                  วันที่รับของ
+                </th>
+                <th scope="col" class="col-actions">
+                  <span class="sr-only">การจัดการ</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in pagedOrders" :key="order.id">
+                <td>
+                  <span class="row-title">{{ order.drugs.name }}</span>
+                  <span class="row-meta">
+                    {{ order.drugs.form }} {{ order.drugs.strength }}
+                    <template v-if="order.packaging"> · {{ order.packaging }}</template>
+                  </span>
+                </td>
+                <td>{{ order.suppliers.name }}</td>
+                <td>
+                  {{ formatDate(order.order_date) }}
+                  <span
+                    v-if="daysOverdue(order.order_date) >= OVERDUE_DAYS"
+                    class="overdue-chip"
                   >
-                  <button
-                    type="button"
-                    class="btn btn-subtle btn-sm"
-                    title="ตั้งวันที่เป็นวันนี้"
-                    @click="order.received_date_input = todayIso()"
-                  >
-                    วันนี้
-                  </button>
-                </div>
-              </td>
-              <td class="col-actions">
-                <div class="row-actions">
-                  <button
-                    type="button"
-                    class="btn btn-danger-soft btn-icon btn-sm"
-                    :disabled="order.isSaving || isCancelling"
-                    :title="`ยกเลิกรายการ ${order.drugs.name}`"
-                    :aria-label="`ยกเลิกรายการ ${order.drugs.name}`"
-                    @click="requestCancel(order)"
-                  >
-                    <AppIcon name="x" :size="15" />
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn-primary btn-icon btn-sm"
-                    :disabled="!order.received_date_input || order.isSaving"
-                    :title="`บันทึกการรับของ ${order.drugs.name}`"
-                    :aria-label="`บันทึกการรับของ ${order.drugs.name}`"
-                    @click="markAsReceived(order)"
-                  >
-                    <span v-if="order.isSaving" class="spinner spinner-sm" />
-                    <AppIcon v-else name="check" :size="15" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                    ค้าง {{ daysOverdue(order.order_date) }} วัน
+                  </span>
+                </td>
+                <td>
+                  <div class="date-cell">
+                    <input
+                      v-model="order.received_date_input"
+                      type="date"
+                      class="form-input form-input-sm"
+                      :max="todayIso()"
+                      :aria-label="`วันที่รับของ ${order.drugs.name}`"
+                    >
+                    <button
+                      type="button"
+                      class="btn btn-subtle btn-sm"
+                      title="ตั้งวันที่เป็นวันนี้"
+                      @click="order.received_date_input = todayIso()"
+                    >
+                      วันนี้
+                    </button>
+                  </div>
+                </td>
+                <td class="col-actions">
+                  <div class="row-actions">
+                    <button
+                      type="button"
+                      class="btn btn-danger-soft btn-icon btn-sm"
+                      :disabled="order.isSaving || isCancelling"
+                      :title="`ยกเลิกรายการ ${order.drugs.name}`"
+                      :aria-label="`ยกเลิกรายการ ${order.drugs.name}`"
+                      @click="requestCancel(order)"
+                    >
+                      <AppIcon name="x" :size="15" />
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-primary btn-icon btn-sm"
+                      :disabled="!order.received_date_input || order.isSaving"
+                      :title="`บันทึกการรับของ ${order.drugs.name}`"
+                      :aria-label="`บันทึกการรับของ ${order.drugs.name}`"
+                      @click="markAsReceived(order)"
+                    >
+                      <span v-if="order.isSaving" class="spinner spinner-sm" />
+                      <AppIcon v-else name="check" :size="15" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          <span>แสดง {{ rangeStart }}-{{ rangeEnd }} จาก {{ filteredOrders.length }} รายการ</span>
+
+          <div class="page-controls">
+            <label class="page-size">
+              <span class="sr-only">จำนวนรายการต่อหน้า</span>
+              <select v-model.number="pageSize" class="form-select form-select-sm" aria-label="จำนวนรายการต่อหน้า">
+                <option :value="25">
+                  25
+                </option>
+                <option :value="50">
+                  50
+                </option>
+                <option :value="100">
+                  100
+                </option>
+              </select>
+            </label>
+
+            <button
+              type="button"
+              class="btn btn-ghost btn-icon btn-sm"
+              aria-label="หน้าก่อนหน้า"
+              :disabled="page <= 1"
+              @click="page -= 1"
+            >
+              <AppIcon name="chevronLeft" :size="15" />
+            </button>
+            <span class="page-indicator">{{ page }} / {{ totalPages }}</span>
+            <button
+              type="button"
+              class="btn btn-ghost btn-icon btn-sm"
+              aria-label="หน้าถัดไป"
+              :disabled="page >= totalPages"
+              @click="page += 1"
+            >
+              <AppIcon name="chevronRight" :size="15" />
+            </button>
+          </div>
+        </div>
+      </template>
     </template>
 
     <!-- Cancel confirmation -->

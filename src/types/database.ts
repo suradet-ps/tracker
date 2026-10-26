@@ -137,11 +137,126 @@ export type Database = {
           },
         ];
       };
+      auto_order_plans: {
+        Row: {
+          id: number;
+          drug_id: number;
+          supplier_id: number;
+          usage_quantity: number;
+          usage_months: number;
+          interval_months: number;
+          order_quantity: number | null;
+          next_order_date: string;
+          unit_count: string;
+          packaging: string | null;
+          price_per_unit: number;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          drug_id: number;
+          supplier_id: number;
+          usage_quantity: number;
+          usage_months: number;
+          interval_months: number;
+          order_quantity?: number | null;
+          next_order_date: string;
+          unit_count: string;
+          packaging?: string | null;
+          price_per_unit?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          drug_id?: number;
+          supplier_id?: number;
+          usage_quantity?: number;
+          usage_months?: number;
+          interval_months?: number;
+          order_quantity?: number | null;
+          next_order_date?: string;
+          unit_count?: string;
+          packaging?: string | null;
+          price_per_unit?: number;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'auto_order_plans_drug_id_fkey';
+            columns: ['drug_id'];
+            isOneToOne: false;
+            referencedRelation: 'drugs';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'auto_order_plans_supplier_id_fkey';
+            columns: ['supplier_id'];
+            isOneToOne: false;
+            referencedRelation: 'suppliers';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      auto_order_runs: {
+        Row: {
+          id: number;
+          plan_id: number;
+          run_date: string;
+          purchase_order_id: number | null;
+          quantity: number | null;
+          status: AutoOrderRunStatus;
+          message: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          plan_id: number;
+          run_date: string;
+          purchase_order_id?: number | null;
+          quantity?: number | null;
+          status: AutoOrderRunStatus;
+          message?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          plan_id?: number;
+          run_date?: string;
+          purchase_order_id?: number | null;
+          quantity?: number | null;
+          status?: AutoOrderRunStatus;
+          message?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'auto_order_runs_plan_id_fkey';
+            columns: ['plan_id'];
+            isOneToOne: false;
+            referencedRelation: 'auto_order_plans';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'auto_order_runs_purchase_order_id_fkey';
+            columns: ['purchase_order_id'];
+            isOneToOne: false;
+            referencedRelation: 'purchase_orders';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: {
       purchase_order_status: PurchaseOrderStatus;
+      auto_order_run_status: AutoOrderRunStatus;
     };
   };
 };
@@ -156,6 +271,13 @@ export type Database = {
  */
 export type PurchaseOrderStatus = 'ต้องสั่งซื้อ' | 'สั่งแล้ว' | 'รับของแล้ว' | 'ยกเลิก';
 
+/**
+ * Result of evaluating one automatic purchase plan.
+ * `created` = draft purchase order inserted, `skipped_open_draft` = a draft
+ * for the same drug is still waiting for review, `error` = the run failed.
+ */
+export type AutoOrderRunStatus = 'created' | 'skipped_open_draft' | 'error';
+
 // ─────────────────────────────────────────────
 // Row shorthand aliases
 // ─────────────────────────────────────────────
@@ -169,6 +291,10 @@ export type ImportBatchInsert = Database['public']['Tables']['import_batches']['
 export type SupplierInsert = Database['public']['Tables']['suppliers']['Insert'];
 export type DrugInsert = Database['public']['Tables']['drugs']['Insert'];
 export type PurchaseOrderInsert = Database['public']['Tables']['purchase_orders']['Insert'];
+export type AutoOrderPlanRow = Database['public']['Tables']['auto_order_plans']['Row'];
+export type AutoOrderPlanInsert = Database['public']['Tables']['auto_order_plans']['Insert'];
+export type AutoOrderPlanUpdate = Database['public']['Tables']['auto_order_plans']['Update'];
+export type AutoOrderRunRow = Database['public']['Tables']['auto_order_runs']['Row'];
 
 export type PurchaseOrderUpdate = Database['public']['Tables']['purchase_orders']['Update'];
 
@@ -214,6 +340,43 @@ export type HistoryViewOrder
       drugs: DrugRow;
       suppliers: SupplierRow;
     };
+
+/** Auto-order plan with the joined drug and supplier rows. */
+export type AutoOrderPlanWithRelations
+  = Pick<AutoOrderPlanRow, 'id' | 'drug_id' | 'usage_quantity' | 'usage_months' | 'interval_months' | 'order_quantity' | 'next_order_date' | 'unit_count' | 'packaging' | 'price_per_unit' | 'is_active' | 'created_at' | 'updated_at'>
+    & {
+      drugs: DrugRow;
+      suppliers: SupplierRow;
+    };
+
+/** Run-log entry with the plan's drug and supplier for the history table. */
+export type AutoOrderRunWithRelations
+  = Pick<AutoOrderRunRow, 'id' | 'run_date' | 'quantity' | 'status' | 'message' | 'created_at'>
+    & {
+      auto_order_plans: {
+        drugs: Pick<DrugRow, 'name' | 'form' | 'strength'>;
+        suppliers: Pick<SupplierRow, 'name'>;
+      } | null;
+    };
+
+/** Response body returned by the `generate-auto-orders` edge function. */
+export type AutoOrderRunResult = {
+  plan_id: string;
+  drug_name: string;
+  supplier_name: string;
+  quantity: number;
+  status: AutoOrderRunStatus;
+  message: string;
+  next_order_date: string;
+};
+
+export type AutoOrderFunctionResponse = {
+  status: 'ok';
+  dry_run: boolean;
+  results: AutoOrderRunResult[];
+  notification_error?: string;
+  error?: string;
+};
 
 /** Extended order used in the "Receive" view with local UI state */
 export type ReceivableOrder = {

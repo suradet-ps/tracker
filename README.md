@@ -41,8 +41,8 @@ One clone, one install, one command.
 ```
 ⟫ git clone https://github.com/suradet-ps/tracker.git
 ⟫ cd tracker
-⟫ npm install
-⟫ npm run dev
+⟫ bun install
+⟫ bun run dev
 ```
 
 <details>
@@ -59,9 +59,8 @@ The Telegram bot token and chat id are Supabase Edge Function secrets,
 not Vite variables - set them with
 `supabase secrets set TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...`.
 
-Requires Node `^22.22.2`, `^24.15.0`, or `>=26.0.0` (per `package.json`;
-`.nvmrc` pins Node 24 for the repository), a Supabase project, and a
-Telegram bot with its chat id.
+Requires Bun 1.3.1 (pinned via `packageManager` in `package.json`), a
+Supabase project, and a Telegram bot with its chat id.
 
 </details>
 
@@ -72,9 +71,9 @@ The notifier lives in `supabase/functions/send-telegram-notify`. After
 changing it, deploy with the Supabase CLI (Docker is not required):
 
 ```
-⟫ npx supabase login
-⟫ npx supabase link --project-ref YOUR_PROJECT_REF
-⟫ npx supabase functions deploy send-telegram-notify
+⟫ bunx supabase login
+⟫ bunx supabase link --project-ref YOUR_PROJECT_REF
+⟫ bunx supabase functions deploy send-telegram-notify
 ```
 
 Secrets stay in the Supabase project (`TELEGRAM_BOT_TOKEN`,
@@ -83,7 +82,29 @@ as `supabase/.temp/` is ignored by git.
 
 </details>
 
-Deploy: `⟫ npm run build` then either `⟫ firebase deploy` (the
+<details>
+<summary>Enabling automatic purchase plans</summary>
+
+The plan runner lives in `supabase/functions/generate-auto-orders` and
+creates draft orders in `ต้องสั่งซื้อ`, then notifies the pharmacy chat.
+
+1. Apply the new tables in `supabase-schema.sql` (`auto_order_plans`,
+   `auto_order_runs`).
+2. Deploy the function:
+   `⟫ bunx supabase functions deploy generate-auto-orders`
+3. Enable `pg_cron` + `pg_net`, store the shared cron secret in Vault,
+   then run [`supabase/cron/auto-order-plans.sql`](supabase/cron/auto-order-plans.sql).
+   The job runs daily at 08:00 Asia/Bangkok.
+
+The page also has a dry-run button, so a plan can be tested without
+writing orders or sending Telegram. Each plan uses the calculated
+quantity by default; tick "กำหนดเอง" in the plan form to store an explicit
+`order_quantity` per cycle (for example, to match a supplier's pack size).
+Run `supabase-schema.sql` before deploying so the column exists.
+
+</details>
+
+Deploy: `⟫ bun run build` then either `⟫ firebase deploy` (the
 `firebase.json` rewrites serve the SPA from `dist/`) or push to Vercel
 (the `vercel.json` rewrites provide the same SPA fallback for deep links
 such as `/to-receive`).
@@ -97,6 +118,9 @@ One workflow, three gears, and a messenger.
 - **Imports** - a CSV upload turns a purchase list into an order in one
   move: no line-by-line typing, no transcription errors from the
   spreadsheet.
+- **Plans** - opt-in automatic purchase plans turn a drug's historical
+  usage and reorder interval into a draft order on schedule, announced
+  to the pharmacy chat for review before anything reaches a supplier.
 - **Tracks** - every order carries its status from Ordered to Delivered
   through an interface built for one action: confirm the goods, move the
   line. The status is the state of truth.

@@ -2,13 +2,15 @@
 <script setup lang="ts">
 import type { HistoryViewOrder, PurchaseOrderStatus } from '@/types/database';
 
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, ref, watch } from 'vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
 import EmptyState from '@/components/ui/EmptyState.vue';
 import StatCard from '@/components/ui/StatCard.vue';
 import StatusBadge from '@/components/ui/StatusBadge.vue';
 import { supabase } from '@/supabase/client';
 import { formatDate } from '@/utils/date';
+
+defineOptions({ name: 'HistoryView' });
 
 type SortKey = 'name' | 'supplier' | 'status' | 'orderDate' | 'receivedDate';
 type SortDirection = 'asc' | 'desc';
@@ -220,7 +222,8 @@ async function fetchHistory(): Promise<void> {
 // Lifecycle
 // ─────────────────────────────────────────────
 
-onMounted(fetchHistory);
+// Kept alive between routes: paint the cached history, then refresh quietly.
+onActivated(fetchHistory);
 </script>
 
 <template>
@@ -242,8 +245,8 @@ onMounted(fetchHistory);
       </div>
     </header>
 
-    <!-- Loading -->
-    <div v-if="loading" class="state-block" aria-busy="true">
+    <!-- Loading (first paint only: cached rows stay visible on refresh) -->
+    <div v-if="loading && allOrders.length === 0" class="state-block" aria-busy="true">
       <span class="spinner" />
       <p class="state-title">
         กำลังโหลดประวัติ...
@@ -255,7 +258,7 @@ onMounted(fetchHistory);
 
     <!-- Error -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="error && allOrders.length === 0"
       is-error
       icon="alertCircle"
       title="โหลดประวัติไม่สำเร็จ"
@@ -276,6 +279,12 @@ onMounted(fetchHistory);
     />
 
     <template v-else>
+      <!-- Background refresh failed: keep the history usable and explain. -->
+      <div v-if="error" class="alert alert-error alert-inline" role="alert">
+        <AppIcon name="alertCircle" :size="17" />
+        <span>{{ error }}</span>
+      </div>
+
       <!-- Metrics -->
       <div class="stat-grid">
         <StatCard label="รายการทั้งหมด" :value="statusCounts.all" hint="ทุกสถานะ" icon="list" />
@@ -455,11 +464,5 @@ onMounted(fetchHistory);
 <style scoped>
 .status-chips {
   margin-bottom: 1rem;
-}
-
-.page-size .form-select-sm {
-  min-height: 32px;
-  padding: 0.2rem 1.9rem 0.2rem 0.6rem;
-  font-size: var(--text-sm);
 }
 </style>
