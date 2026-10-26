@@ -111,10 +111,16 @@ onUnmounted(() => {
       </header>
 
       <main id="main-content" class="app-content">
-        <RouterView v-slot="{ Component }">
-          <Transition name="page" mode="out-in">
-            <component :is="Component" />
-          </Transition>
+        <RouterView v-slot="{ Component, route: currentRoute }">
+          <!-- Keep the list screens alive so returning to them paints the
+               previous rows immediately while fresh data loads in the
+               background. The route name is the cache key: without it Vue
+               would reuse one entry for every screen. QuickOrder is
+               intentionally excluded: it is a form and should start from a
+               clean catalog every time. -->
+          <KeepAlive :include="['OrderView', 'ReceiveView', 'HistoryView', 'AutoPlanView']">
+            <component :is="Component" :key="currentRoute.name" />
+          </KeepAlive>
         </RouterView>
       </main>
     </div>
@@ -169,16 +175,6 @@ onUnmounted(() => {
 
 .app-content {
   flex-grow: 1;
-}
-
-/* Navigation stays snappy: the old screen leaves immediately and the new
-   one settles in with a short fade - no vertical movement, no blank gap. */
-.page-enter-active {
-  transition: opacity 0.12s ease;
-}
-
-.page-enter-from {
-  opacity: 0;
 }
 
 @media (max-width: 1023px) {

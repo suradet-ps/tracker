@@ -258,8 +258,10 @@ and icon carry the type color.
   72px icon rail on desktop (persisted in localStorage); off-canvas drawer
   with scrim and body scroll lock below 1024px.
 - Every route sets a Thai `document.title` (`หน้า · Tracker`).
-- Navigation is instant: no page transition delay, no animated scroll, and
-  the scrollbar gutter is stable so content never shifts sideways.
+- Navigation is instant: no page transition, no animated scroll, and the
+  scrollbar gutter is stable so content never shifts sideways. The list
+  screens stay alive between routes and refresh in the background, so
+  returning to one paints its cached rows immediately.
 
 ---
 
@@ -284,7 +286,8 @@ and icon carry the type color.
 - Don't soften or square button corners - the pill is the signature.
 - Don't use font weights outside 400 / 500 / 600.
 - Don't put `--shadow-lg` on flat content; it belongs to overlays only.
-- Don't animate layout properties during navigation; opacity only.
+- Don't animate route changes or scroll restoration; screens switch
+  instantly.
 - Don't hide focus: every interactive element keeps the visible
   `:focus-visible` ring.
 

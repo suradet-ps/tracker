@@ -7,7 +7,7 @@ import type {
   AutoOrderRunWithRelations,
 } from '@/types/database';
 
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onActivated, onDeactivated, ref, watch } from 'vue';
 import AutoPlanForm from '@/components/AutoPlanForm.vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
 import AppModal from '@/components/ui/AppModal.vue';
@@ -18,6 +18,8 @@ import { useOrderCountsStore } from '@/stores/order-counts';
 import { supabase } from '@/supabase/client';
 import { bangkokTodayIso, formatDate } from '@/utils/date';
 import { formatMoney, formatQuantity } from '@/utils/number';
+
+defineOptions({ name: 'AutoPlanView' });
 
 type StatusFilter = 'all' | 'active' | 'paused';
 
@@ -468,7 +470,16 @@ async function openRunHistory(): Promise<void> {
   await fetchRuns();
 }
 
-onMounted(fetchPlans);
+// Kept alive between routes: paint the cached plans, then refresh quietly.
+onActivated(fetchPlans);
+
+onDeactivated(() => {
+  showForm.value = false;
+  editingPlan.value = null;
+  planToDelete.value = null;
+  runTarget.value = null;
+  showRuns.value = false;
+});
 </script>
 
 <template>
@@ -495,8 +506,8 @@ onMounted(fetchPlans);
       </div>
     </header>
 
-    <!-- Loading -->
-    <div v-if="loading" class="state-block" aria-busy="true">
+    <!-- Loading (first paint only: cached plans stay visible on refresh) -->
+    <div v-if="loading && plans.length === 0" class="state-block" aria-busy="true">
       <span class="spinner" />
       <p class="state-title">
         กำลังโหลดแผนสั่งซื้อ...
@@ -508,7 +519,7 @@ onMounted(fetchPlans);
 
     <!-- Error -->
     <EmptyState
-      v-else-if="error"
+      v-else-if="error && plans.length === 0"
       is-error
       icon="alertCircle"
       title="โหลดแผนไม่สำเร็จ"
@@ -534,6 +545,12 @@ onMounted(fetchPlans);
     </EmptyState>
 
     <template v-else>
+      <!-- Background refresh failed: keep the plans usable and explain. -->
+      <div v-if="error" class="alert alert-error alert-inline" role="alert">
+        <AppIcon name="alertCircle" :size="17" />
+        <span>{{ error }}</span>
+      </div>
+
       <!-- Metrics -->
       <div class="stat-grid">
         <StatCard label="แผนที่เปิดใช้งาน" :value="activePlans.length" hint="กำลังทำงานตามรอบ" icon="calendar" />
@@ -943,12 +960,6 @@ onMounted(fetchPlans);
 <style scoped>
 .plan-table {
   min-width: 1040px;
-}
-
-.page-size .form-select-sm {
-  min-height: 32px;
-  padding: 0.2rem 1.9rem 0.2rem 0.6rem;
-  font-size: var(--text-sm);
 }
 
 .data-table tbody tr.is-paused {
