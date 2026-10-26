@@ -175,7 +175,17 @@ async function fetchOrdersToReceive(): Promise<void> {
     if (dbError)
       throw dbError;
 
-    orders.value = ((data ?? []) as unknown as ReceiveViewOrder[]).map(toReceivableOrder);
+    // A background refresh can land while the user is typing receipt dates.
+    // Carry those unsaved values across the replacement by order id.
+    const pendingInputs = new Map(
+      orders.value.map(order => [order.id, order.received_date_input]),
+    );
+
+    orders.value = ((data ?? []) as unknown as ReceiveViewOrder[]).map((row) => {
+      const order = toReceivableOrder(row);
+      order.received_date_input = pendingInputs.get(row.id) ?? '';
+      return order;
+    });
 
     // Never leave the supplier filter pointing at a name that no longer exists.
     if (supplierFilter.value && !supplierNames.value.includes(supplierFilter.value)) {
