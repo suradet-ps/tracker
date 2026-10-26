@@ -6,6 +6,7 @@ import { computed, ref } from 'vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
 import AppModal from '@/components/ui/AppModal.vue';
 import { supabase } from '@/supabase/client';
+import { extractFunctionErrorMessage, isFunctionTimeoutError } from '@/utils/function-errors';
 import { formatMoney, formatQuantity } from '@/utils/number';
 import { escapeMarkdownV2 } from '@/utils/telegram';
 
@@ -135,9 +136,20 @@ function buildTelegramMessage(
 // Core action
 // ─────────────────────────────────────────────
 
+/** Abort each notification invoke after this long so the modal can never hang forever. */
+const NOTIFY_TIMEOUT_MS = 30_000;
+
+/**
+ * Supplier groups whose notification was already delivered in this modal
+ * session. A retry after a partial failure skips them so no supplier is
+ * notified twice.
+ */
+const sentSuppliers = new Set<string>();
+
 /**
  * Ignore dismissal requests (Escape, backdrop, close button) while the
  * send is in flight: unmounting mid-flight would strand the result.
+ * The invoke timeout bounds how long that can block.
  */
 function handleClose(): void {
   if (!isSending.value)
@@ -155,38 +167,46 @@ async function confirmAndSend(): Promise<void> {
     const dateTelegram = formatThaiDate(orderDate);
     const dateForDatabase = toIsoDateString(orderDate);
 
-    // Send a Telegram notification per supplier group
+    // Notify each supplier group, then move that group's orders to สั่งแล้ว.
+    // A retry after a partial failure must skip only the Telegram invoke; the
+    // status update below still runs for groups that were already notified.
     for (const supplierName of Object.keys(props.groupedOrders)) {
       const group = props.groupedOrders[supplierName];
       if (!group)
         continue;
 
-      const message = buildTelegramMessage(supplierName, group.orders, dateTelegram);
-
-      // Collect IDs for this supplier group
       const groupOrderIds = group.orders.map(order => order.id);
 
-      // Invoke Supabase Edge Function to send Telegram notification
-      const { data: functionResponse, error: functionError } = await supabase.functions.invoke(
-        'send-telegram-notify',
-        { body: { message } },
-      );
+      if (!sentSuppliers.has(supplierName)) {
+        const message = buildTelegramMessage(supplierName, group.orders, dateTelegram);
 
-      if (functionError) {
-        throw new Error(
-          `Failed to send notification for ${supplierName}: ${functionError.message}`,
+        // Invoke Supabase Edge Function to send Telegram notification. The
+        // timeout aborts a hung invocation instead of stranding the modal.
+        // `order_ids` gives the function a stable group key so a retry can
+        // never send the same supplier a duplicate message.
+        const { error: functionError } = await supabase.functions.invoke(
+          'send-telegram-notify',
+          { body: { message, order_ids: groupOrderIds }, timeout: NOTIFY_TIMEOUT_MS },
         );
+
+        if (functionError) {
+          if (isFunctionTimeoutError(functionError)) {
+            throw new Error(
+              `แจ้งเตือน ${supplierName} ใช้เวลานานเกิน ${NOTIFY_TIMEOUT_MS / 1000} วินาที กรุณาตรวจสอบการเชื่อมต่อแล้วกดส่งอีกครั้ง (ระบบจะไม่ส่งซ้ำถ้าข้อความออกไปแล้ว)`,
+            );
+          }
+
+          const serverMessage = await extractFunctionErrorMessage(functionError);
+          throw new Error(`ส่งแจ้งเตือน ${supplierName} ไม่สำเร็จ: ${serverMessage}`);
+        }
+
+        // Delivered: a retry must not invoke the notification again.
+        sentSuppliers.add(supplierName);
       }
 
-      // The edge function may return an error in the response body
-      const responseBody = functionResponse as { error?: string } | null;
-      if (responseBody?.error) {
-        throw new Error(
-          `Edge function returned an error for ${supplierName}: ${responseBody.error}`,
-        );
-      }
-
-      // Notification succeeded - update DB for this supplier's orders immediately.
+      // Always run the DB update: a previous attempt may have delivered the
+      // notification and then failed to persist the status, so the retry must
+      // still move those orders before this modal can close.
       // Only rows still queued are flipped: rows a concurrent session already
       // cancelled (or sent) must not be overwritten.
       const { data: updatedRows, error: dbError } = await supabase
@@ -199,18 +219,48 @@ async function confirmAndSend(): Promise<void> {
       if (dbError) {
         console.error(`DB update failed for supplier "${supplierName}" after notification was sent.`, dbError);
         throw new Error(
-          `Notification sent for ${supplierName}, but DB update failed: ${dbError.message}`,
+          `แจ้งเตือน ${supplierName} สำเร็จแล้ว แต่บันทึกสถานะลงฐานข้อมูลไม่สำเร็จ: ${dbError.message}`,
         );
       }
 
-      const updatedIds = (updatedRows ?? []).map(row => row.id);
+      const updatedIds = new Set((updatedRows ?? []).map(row => row.id));
       successfulIds.push(...updatedIds);
 
-      if (updatedIds.length !== groupOrderIds.length) {
+      const unprocessedIds = groupOrderIds.filter(id => !updatedIds.has(id));
+      if (unprocessedIds.length === 0)
+        continue;
+
+      // The update skipped rows that already left ต้องสั่งซื้อ. This happens
+      // when a previous attempt committed the update but its response was
+      // lost, or when another session cancelled the row. Re-read the current
+      // statuses so a retry can finish instead of failing forever.
+      const { data: currentRows, error: statusError } = await supabase
+        .from('purchase_orders')
+        .select('id, status')
+        .in('id', unprocessedIds);
+
+      if (statusError) {
         throw new Error(
-          `แจ้งเตือน ${supplierName} แล้ว แต่มี ${groupOrderIds.length - updatedIds.length} รายการที่ถูกยกเลิกหรือดำเนินการไปก่อนหน้านี้`,
+          `แจ้งเตือน ${supplierName} แล้ว แต่ตรวจสอบสถานะรายการในฐานข้อมูลไม่สำเร็จ: ${statusError.message}`,
         );
       }
+
+      const stillQueued = (currentRows ?? []).filter(row => row.status === 'ต้องสั่งซื้อ');
+      if (stillQueued.length > 0) {
+        throw new Error(
+          `แจ้งเตือน ${supplierName} แล้ว แต่ยังบันทึกสถานะไม่ครบ (${stillQueued.length} รายการยังเป็น ต้องสั่งซื้อ) กรุณากดส่งอีกครั้ง`,
+        );
+      }
+
+      const cancelled = (currentRows ?? []).filter(row => row.status === 'ยกเลิก');
+      if (cancelled.length > 0) {
+        throw new Error(
+          `แจ้งเตือน ${supplierName} แล้ว แต่มี ${cancelled.length} รายการที่ถูกยกเลิกไปก่อนหน้านี้`,
+        );
+      }
+
+      // Rows in รับของแล้ว or another completed state are already past
+      // สั่งแล้ว, so there is nothing left to do for them.
     }
 
     emit('ordersSent');

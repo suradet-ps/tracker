@@ -251,12 +251,49 @@ export type Database = {
           },
         ];
       };
+      telegram_notifications: {
+        Row: {
+          idempotency_key: string;
+          order_ids: string[];
+          status: TelegramNotificationStatus;
+          attempts: number;
+          last_error: string | null;
+          started_at: string;
+          sent_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          idempotency_key: string;
+          order_ids: string[];
+          status?: TelegramNotificationStatus;
+          attempts?: number;
+          last_error?: string | null;
+          started_at?: string;
+          sent_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          idempotency_key?: string;
+          order_ids?: string[];
+          status?: TelegramNotificationStatus;
+          attempts?: number;
+          last_error?: string | null;
+          started_at?: string;
+          sent_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: {
       purchase_order_status: PurchaseOrderStatus;
       auto_order_run_status: AutoOrderRunStatus;
+      telegram_notification_status: TelegramNotificationStatus;
     };
   };
 };
@@ -278,6 +315,9 @@ export type PurchaseOrderStatus = 'ต้องสั่งซื้อ' | 'ส�
  */
 export type AutoOrderRunStatus = 'created' | 'skipped_open_draft' | 'error';
 
+/** Idempotency state for one supplier notification request. */
+export type TelegramNotificationStatus = 'sending' | 'sent' | 'failed';
+
 // ─────────────────────────────────────────────
 // Row shorthand aliases
 // ─────────────────────────────────────────────
@@ -295,6 +335,7 @@ export type AutoOrderPlanRow = Database['public']['Tables']['auto_order_plans'][
 export type AutoOrderPlanInsert = Database['public']['Tables']['auto_order_plans']['Insert'];
 export type AutoOrderPlanUpdate = Database['public']['Tables']['auto_order_plans']['Update'];
 export type AutoOrderRunRow = Database['public']['Tables']['auto_order_runs']['Row'];
+export type TelegramNotificationRow = Database['public']['Tables']['telegram_notifications']['Row'];
 
 export type PurchaseOrderUpdate = Database['public']['Tables']['purchase_orders']['Update'];
 

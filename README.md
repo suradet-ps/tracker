@@ -67,8 +67,11 @@ Supabase project, and a Telegram bot with its chat id.
 <details>
 <summary>Deploying the Telegram edge function</summary>
 
-The notifier lives in `supabase/functions/send-telegram-notify`. After
-changing it, deploy with the Supabase CLI (Docker is not required):
+The notifier lives in `supabase/functions/send-telegram-notify`. It records
+each supplier group in the `telegram_notifications` table so a retry after a
+timeout cannot send the same Telegram message twice. Apply
+`supabase-schema.sql` first, then deploy with the Supabase CLI (Docker is not
+required):
 
 ```
 ⟫ bunx supabase login
