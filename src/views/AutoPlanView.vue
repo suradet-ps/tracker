@@ -16,6 +16,7 @@ import StatCard from '@/components/ui/StatCard.vue';
 import { useNotificationStore } from '@/stores/notification';
 import { useOrderCountsStore } from '@/stores/order-counts';
 import { supabase } from '@/supabase/client';
+import { resolveOrderQuantity } from '@/utils/auto-plan';
 import { bangkokTodayIso, formatDate } from '@/utils/date';
 import { formatMoney, formatQuantity } from '@/utils/number';
 
@@ -71,10 +72,9 @@ function daysUntil(isoDate: string): number {
   );
 }
 
-/** Quantity the plan will create each cycle (same formula as the edge function). */
+/** Quantity the plan will create each cycle (custom override or calculation). */
 function orderQuantity(plan: AutoOrderPlanWithRelations): number {
-  const monthly = plan.usage_quantity / plan.usage_months;
-  return Math.max(1, Math.ceil(monthly * plan.interval_months));
+  return resolveOrderQuantity(plan);
 }
 
 function cycleValue(plan: AutoOrderPlanWithRelations): number {
@@ -210,6 +210,7 @@ type PlanRowView = {
   nextDateLabel: string;
   dueLabel: string | null;
   isOverdue: boolean;
+  isCustomQuantity: boolean;
 };
 
 /** Everything the table needs, calculated once per visible row. */
@@ -223,6 +224,7 @@ const planRows = computed<PlanRowView[]>(() =>
       nextDateLabel: formatDate(plan.next_order_date),
       dueLabel: dueLabel(plan, days),
       isOverdue: plan.is_active && days < 0,
+      isCustomQuantity: plan.order_quantity != null,
     };
   }),
 );
@@ -248,7 +250,7 @@ async function fetchPlans(): Promise<void> {
   try {
     const { data, error: fetchError } = await supabase
       .from('auto_order_plans')
-      .select('id, drug_id, usage_quantity, usage_months, interval_months, next_order_date, unit_count, packaging, price_per_unit, is_active, created_at, updated_at, drugs (*), suppliers (*)')
+      .select('id, drug_id, usage_quantity, usage_months, interval_months, order_quantity, next_order_date, unit_count, packaging, price_per_unit, is_active, created_at, updated_at, drugs (*), suppliers (*)')
       .order('next_order_date', { ascending: true });
 
     if (fetchError)
@@ -666,7 +668,9 @@ onDeactivated(() => {
               </td>
               <td class="num">
                 <strong>{{ formatQuantity(row.quantity) }}</strong> × {{ row.plan.unit_count }}
-                <span class="cell-meta">฿{{ formatMoney(row.cycleValue) }}</span>
+                <span class="cell-meta">
+                  ฿{{ formatMoney(row.cycleValue) }}<template v-if="row.isCustomQuantity"> · กำหนดเอง</template>
+                </span>
               </td>
               <td>
                 <span class="next-date">{{ row.nextDateLabel }}</span>
@@ -829,7 +833,7 @@ onDeactivated(() => {
           <span class="run-value">{{ formatQuantity(runTarget.usage_quantity / runTarget.usage_months) }} {{ runTarget.unit_count }}/เดือน</span>
         </div>
         <div>
-          <span class="run-label">จะสร้างครั้งละ</span>
+          <span class="run-label">{{ runTarget.order_quantity != null ? 'จะสร้างครั้งละ (กำหนดเอง)' : 'จะสร้างครั้งละ' }}</span>
           <span class="run-value">{{ formatQuantity(orderQuantity(runTarget)) }} {{ runTarget.unit_count }}</span>
         </div>
         <div>
