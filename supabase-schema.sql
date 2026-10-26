@@ -131,6 +131,27 @@ comment on table public.auto_order_runs is 'บันทึกผลการร
 create index if not exists auto_order_runs_plan_created_idx
   on public.auto_order_runs (plan_id, created_at desc);
 
+-- Idempotency ledger for the `send-telegram-notify` edge function. One row
+-- per supplier order group, keyed by the sorted purchase-order ids, so a
+-- retry after a timeout cannot send the same Telegram message twice.
+create table if not exists public.telegram_notifications (
+  idempotency_key text primary key,
+  order_ids jsonb not null,
+  status text not null default 'sending' check (status in ('sending', 'sent', 'failed')),
+  attempts integer not null default 1 check (attempts > 0),
+  last_error text,
+  started_at timestamptz not null default now(),
+  sent_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.telegram_notifications is 'บันทึกการส่ง Telegram แบบ idempotent ต่อกลุ่มใบสั่งซื้อ เพื่อกันการส่งซ้ำเมื่อผู้ใช้กด retry';
+comment on column public.telegram_notifications.order_ids is 'รายการ purchase_orders.id ที่อยู่ในข้อความนี้ (เรียงลำดับแล้ว)';
+
+create index if not exists telegram_notifications_status_started_idx
+  on public.telegram_notifications (status, started_at);
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Row level security
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -141,6 +162,7 @@ alter table public.import_batches enable row level security;
 alter table public.purchase_orders enable row level security;
 alter table public.auto_order_plans enable row level security;
 alter table public.auto_order_runs enable row level security;
+alter table public.telegram_notifications enable row level security;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Grants
@@ -154,6 +176,9 @@ grant all on table public.import_batches to anon, authenticated, service_role;
 grant all on table public.purchase_orders to anon, authenticated, service_role;
 grant all on table public.auto_order_plans to anon, authenticated, service_role;
 grant all on table public.auto_order_runs to anon, authenticated, service_role;
+-- Internal ledger: only the service role used by the edge function may access it.
+grant all on table public.telegram_notifications to service_role;
+revoke all on table public.telegram_notifications from anon, authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Policies
@@ -210,3 +235,6 @@ alter table public.auto_order_plans
   add column if not exists order_quantity numeric check (order_quantity > 0);
 
 comment on column public.auto_order_plans.order_quantity is 'จำนวนที่ผู้ใช้กำหนดต่อรอบ (null = คำนวณอัตโนมัติจากยอดใช้ย้อนหลัง)';
+
+-- 2026-10-26: added telegram_notifications for idempotent supplier
+--             notifications (no duplicate Telegram message on retry).
