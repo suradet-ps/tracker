@@ -63,10 +63,12 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [...routes],
   // Every screen starts at the top; back/forward restores the previous spot.
-  // `behavior: 'instant'` overrides the global smooth scrolling so a route
-  // change never animates a long scroll across the freshly mounted page.
+  // Restore instantly in both cases: an animated scroll across a freshly
+  // painted screen reads as a page jump on slower machines.
   scrollBehavior(_to, _from, savedPosition) {
-    return savedPosition ?? { top: 0, behavior: 'instant' };
+    return savedPosition
+      ? { left: savedPosition.left, top: savedPosition.top, behavior: 'instant' }
+      : { left: 0, top: 0, behavior: 'instant' };
   },
 });
 

@@ -540,12 +540,6 @@ onMounted(fetchCatalog);
 }
 
 /* ─── Pagination extras ─── */
-.page-size .form-select-sm {
-  min-height: 32px;
-  padding: 0.2rem 1.9rem 0.2rem 0.6rem;
-  font-size: var(--text-sm);
-}
-
 .bar-total {
   color: var(--text-2);
   font-size: var(--text-sm);
