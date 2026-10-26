@@ -1,5 +1,5 @@
 import { FunctionsFetchError, FunctionsHttpError } from '@supabase/supabase-js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { extractFunctionErrorMessage, isFunctionTimeoutError } from '@/utils/function-errors';
 
 const HTTP_FALLBACK = 'Edge Function returned a non-2xx status code';
@@ -27,6 +27,22 @@ describe('extractFunctionErrorMessage', () => {
   it('returns the message of plain errors and stringifies anything else', async () => {
     await expect(extractFunctionErrorMessage(new Error('boom'))).resolves.toBe('boom');
     await expect(extractFunctionErrorMessage('weird')).resolves.toBe('weird');
+  });
+
+  it('falls back when the error body read stalls', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const stalledBody = { json: () => new Promise(() => {}) } as unknown as Response;
+      const error = new FunctionsHttpError(stalledBody);
+      const extraction = extractFunctionErrorMessage(error);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(extraction).resolves.toBe(HTTP_FALLBACK);
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 });
 
