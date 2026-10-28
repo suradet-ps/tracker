@@ -25,7 +25,9 @@
 --         add column if not exists note text;
 --   - Avoid destructive drop/truncate statements; always back up first.
 --
--- Scope: the 4 Tracker tables only.
+-- Scope: the Tracker tables only (suppliers, drugs, import_batches,
+--        purchase_orders, auto_order_plans, auto_order_runs, profiles,
+--        telegram_notifications).
 -- Note: this project shares its public schema with another system (reading_*),
 --       so never drop the public schema.
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -45,6 +47,21 @@ create table if not exists public.suppliers (
 );
 
 comment on table public.suppliers is 'เก็บข้อมูลบริษัทผู้จัดจำหน่ายยา';
+
+-- Staff allowlist for Tracker. An auth user with no row here (or with
+-- role = 'pending') is signed in but has no access to procurement data.
+-- Rows are created by an administrator, never by self-service sign-up.
+create table if not exists public.profiles (
+  id uuid primary key references auth.users (id) on delete cascade,
+  email text,
+  role text not null default 'pending'
+    constraint profiles_role_check check (role in ('pending', 'viewer', 'pharmacist', 'admin')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+comment on table public.profiles is 'รายชื่อเจ้าหน้าที่ที่ได้รับอนุญาตและบทบาทใน Tracker (allowlist)';
+comment on column public.profiles.role is 'pending = รออนุมัติ, viewer = ดูเท่านั้น, pharmacist = สร้าง/แก้ไข, admin = จัดการทั้งหมด';
 
 create table if not exists public.drugs (
   id uuid primary key default gen_random_uuid(),
@@ -156,6 +173,7 @@ create index if not exists telegram_notifications_status_started_idx
 -- Row level security
 -- ─────────────────────────────────────────────────────────────────────────────
 
+alter table public.profiles enable row level security;
 alter table public.suppliers enable row level security;
 alter table public.drugs enable row level security;
 alter table public.import_batches enable row level security;
@@ -166,62 +184,279 @@ alter table public.telegram_notifications enable row level security;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Grants
+--
+-- Least privilege: anon has no table privileges, authenticated gets only DML
+-- (no TRUNCATE/REFERENCES/TRIGGER), and the service role keeps full access.
+-- The RLS policies below decide which rows each signed-in staff role may touch.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 grant usage on schema public to anon, authenticated, service_role;
 
-grant all on table public.suppliers to anon, authenticated, service_role;
-grant all on table public.drugs to anon, authenticated, service_role;
-grant all on table public.import_batches to anon, authenticated, service_role;
-grant all on table public.purchase_orders to anon, authenticated, service_role;
-grant all on table public.auto_order_plans to anon, authenticated, service_role;
-grant all on table public.auto_order_runs to anon, authenticated, service_role;
+revoke all on table
+  public.profiles,
+  public.suppliers,
+  public.drugs,
+  public.import_batches,
+  public.purchase_orders,
+  public.auto_order_plans,
+  public.auto_order_runs,
+  public.telegram_notifications
+from anon, authenticated, public;
+
+grant select, insert, update, delete on table
+  public.profiles,
+  public.suppliers,
+  public.drugs,
+  public.import_batches,
+  public.purchase_orders,
+  public.auto_order_plans
+to authenticated;
+
+-- Run logs are written by the service role and read-only in the app.
+grant select on table public.auto_order_runs to authenticated;
+
+grant all on table
+  public.profiles,
+  public.suppliers,
+  public.drugs,
+  public.import_batches,
+  public.purchase_orders,
+  public.auto_order_plans,
+  public.auto_order_runs,
+  public.telegram_notifications
+to service_role;
+
 -- Internal ledger: only the service role used by the edge function may access it.
-grant all on table public.telegram_notifications to service_role;
 revoke all on table public.telegram_notifications from anon, authenticated;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Role helpers
+--
+-- SECURITY DEFINER lets a policy on public.profiles call these helpers without
+-- recursing into the profiles policy. The empty search_path keeps the lookup
+-- pinned to the fully-qualified table.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create or replace function public.is_staff()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = (select auth.uid())
+      and role in ('viewer', 'pharmacist', 'admin')
+  );
+$$;
+
+create or replace function public.can_write()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = (select auth.uid())
+      and role in ('pharmacist', 'admin')
+  );
+$$;
+
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.profiles
+    where id = (select auth.uid())
+      and role = 'admin'
+  );
+$$;
+
+revoke all on function public.is_staff() from public;
+revoke all on function public.can_write() from public;
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_staff() to authenticated, service_role;
+grant execute on function public.can_write() to authenticated, service_role;
+grant execute on function public.is_admin() to authenticated, service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Policies
 --
--- Full access for signed-in users only (auth.role() = 'authenticated');
--- the anon role is filtered out entirely by RLS.
+-- viewer     -> read every Tracker table
+-- pharmacist -> read + insert/update; may delete automatic plans
+-- admin      -> everything, including deleting records and managing profiles
+-- pending / no profile -> nothing
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- profiles: everyone may read their own row; only admins manage the allowlist.
+drop policy if exists "Staff can read own profile" on public.profiles;
+create policy "Staff can read own profile"
+  on public.profiles
+  for select
+  to authenticated
+  using (id = (select auth.uid()) or public.is_admin());
+
+drop policy if exists "Admins can insert profiles" on public.profiles;
+create policy "Admins can insert profiles"
+  on public.profiles
+  for insert
+  to authenticated
+  with check (public.is_admin());
+
+drop policy if exists "Admins can update profiles" on public.profiles;
+create policy "Admins can update profiles"
+  on public.profiles
+  for update
+  to authenticated
+  using (public.is_admin())
+  with check (public.is_admin());
+
+drop policy if exists "Admins can delete profiles" on public.profiles;
+create policy "Admins can delete profiles"
+  on public.profiles
+  for delete
+  to authenticated
+  using (public.is_admin());
+
+-- suppliers
 drop policy if exists "Allow full access for authenticated users" on public.suppliers;
-create policy "Allow full access for authenticated users"
-  on public.suppliers
-  for all
-  using (auth.role() = 'authenticated'::text);
+drop policy if exists "Staff can read suppliers" on public.suppliers;
+drop policy if exists "Writers can insert suppliers" on public.suppliers;
+drop policy if exists "Writers can update suppliers" on public.suppliers;
+drop policy if exists "Admins can delete suppliers" on public.suppliers;
 
+create policy "Staff can read suppliers"
+  on public.suppliers for select to authenticated
+  using (public.is_staff());
+
+create policy "Writers can insert suppliers"
+  on public.suppliers for insert to authenticated
+  with check (public.can_write());
+
+create policy "Writers can update suppliers"
+  on public.suppliers for update to authenticated
+  using (public.can_write())
+  with check (public.can_write());
+
+create policy "Admins can delete suppliers"
+  on public.suppliers for delete to authenticated
+  using (public.is_admin());
+
+-- drugs
 drop policy if exists "Allow full access for authenticated users" on public.drugs;
-create policy "Allow full access for authenticated users"
-  on public.drugs
-  for all
-  using (auth.role() = 'authenticated'::text);
+drop policy if exists "Staff can read drugs" on public.drugs;
+drop policy if exists "Writers can insert drugs" on public.drugs;
+drop policy if exists "Writers can update drugs" on public.drugs;
+drop policy if exists "Admins can delete drugs" on public.drugs;
 
+create policy "Staff can read drugs"
+  on public.drugs for select to authenticated
+  using (public.is_staff());
+
+create policy "Writers can insert drugs"
+  on public.drugs for insert to authenticated
+  with check (public.can_write());
+
+create policy "Writers can update drugs"
+  on public.drugs for update to authenticated
+  using (public.can_write())
+  with check (public.can_write());
+
+create policy "Admins can delete drugs"
+  on public.drugs for delete to authenticated
+  using (public.is_admin());
+
+-- import_batches
 drop policy if exists "Allow full access for authenticated users" on public.import_batches;
-create policy "Allow full access for authenticated users"
-  on public.import_batches
-  for all
-  using (auth.role() = 'authenticated'::text);
+drop policy if exists "Staff can read import batches" on public.import_batches;
+drop policy if exists "Writers can insert import batches" on public.import_batches;
+drop policy if exists "Writers can update import batches" on public.import_batches;
+drop policy if exists "Admins can delete import batches" on public.import_batches;
 
+create policy "Staff can read import batches"
+  on public.import_batches for select to authenticated
+  using (public.is_staff());
+
+create policy "Writers can insert import batches"
+  on public.import_batches for insert to authenticated
+  with check (public.can_write());
+
+create policy "Writers can update import batches"
+  on public.import_batches for update to authenticated
+  using (public.can_write())
+  with check (public.can_write());
+
+create policy "Admins can delete import batches"
+  on public.import_batches for delete to authenticated
+  using (public.is_admin());
+
+-- purchase_orders
 drop policy if exists "Allow full access for authenticated users" on public.purchase_orders;
-create policy "Allow full access for authenticated users"
-  on public.purchase_orders
-  for all
-  using (auth.role() = 'authenticated'::text);
+drop policy if exists "Staff can read purchase orders" on public.purchase_orders;
+drop policy if exists "Writers can insert purchase orders" on public.purchase_orders;
+drop policy if exists "Writers can update purchase orders" on public.purchase_orders;
+drop policy if exists "Admins can delete purchase orders" on public.purchase_orders;
 
+create policy "Staff can read purchase orders"
+  on public.purchase_orders for select to authenticated
+  using (public.is_staff());
+
+create policy "Writers can insert purchase orders"
+  on public.purchase_orders for insert to authenticated
+  with check (public.can_write());
+
+create policy "Writers can update purchase orders"
+  on public.purchase_orders for update to authenticated
+  using (public.can_write())
+  with check (public.can_write());
+
+create policy "Admins can delete purchase orders"
+  on public.purchase_orders for delete to authenticated
+  using (public.is_admin());
+
+-- auto_order_plans
 drop policy if exists "Allow full access for authenticated users" on public.auto_order_plans;
-create policy "Allow full access for authenticated users"
-  on public.auto_order_plans
-  for all
-  using (auth.role() = 'authenticated'::text);
+drop policy if exists "Staff can read automatic plans" on public.auto_order_plans;
+drop policy if exists "Writers can insert automatic plans" on public.auto_order_plans;
+drop policy if exists "Writers can update automatic plans" on public.auto_order_plans;
+drop policy if exists "Writers can delete automatic plans" on public.auto_order_plans;
 
+create policy "Staff can read automatic plans"
+  on public.auto_order_plans for select to authenticated
+  using (public.is_staff());
+
+create policy "Writers can insert automatic plans"
+  on public.auto_order_plans for insert to authenticated
+  with check (public.can_write());
+
+create policy "Writers can update automatic plans"
+  on public.auto_order_plans for update to authenticated
+  using (public.can_write())
+  with check (public.can_write());
+
+create policy "Writers can delete automatic plans"
+  on public.auto_order_plans for delete to authenticated
+  using (public.can_write());
+
+-- auto_order_runs: written by the service role, read-only for staff.
 drop policy if exists "Allow full access for authenticated users" on public.auto_order_runs;
-create policy "Allow full access for authenticated users"
-  on public.auto_order_runs
-  for all
-  using (auth.role() = 'authenticated'::text);
+drop policy if exists "Staff can read automatic run logs" on public.auto_order_runs;
+
+create policy "Staff can read automatic run logs"
+  on public.auto_order_runs for select to authenticated
+  using (public.is_staff());
+
+-- telegram_notifications has RLS enabled with no policies: service role only.
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- [MIGRATIONS] Log changes made after the 2026-10-09 baseline
@@ -238,3 +473,17 @@ comment on column public.auto_order_plans.order_quantity is 'จำนวนท�
 
 -- 2026-10-26: added telegram_notifications for idempotent supplier
 --             notifications (no duplicate Telegram message on retry).
+-- 2026-10-28: added profiles and role-scoped RLS (issue #92).
+--             - profiles is the staff allowlist; no trigger creates rows on
+--               sign-up, so a new auth user has no access until an admin
+--               explicitly grants a role.
+--             - replaced the blanket authenticated policies with role-scoped
+--               policies; anon lost every table privilege.
+--             - bootstrap the first admin immediately after applying this file:
+--                 insert into public.profiles (id, email, role)
+--                 select id, email, 'admin' from auth.users
+--                 where email = 'admin@hospital.go.th'
+--                 on conflict (id) do update
+--                   set email = excluded.email, role = 'admin',
+--                       updated_at = now();
+--             - then disable public sign-ups (Dashboard or `supabase config push`).

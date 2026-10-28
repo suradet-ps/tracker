@@ -1,3 +1,8 @@
+[auth]
+# Procurement data is invite-only. Existing accounts can still sign in;
+# self-service sign-up is disabled. Push with `supabase config push`.
+enable_signup = false
+
 [functions.send-telegram-notify]
 enabled = true
 verify_jwt = true

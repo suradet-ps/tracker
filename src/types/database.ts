@@ -43,6 +43,30 @@ export type Database = {
         };
         Relationships: [];
       };
+      profiles: {
+        Row: {
+          id: string;
+          email: string | null;
+          role: StaffRole;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          email?: string | null;
+          role?: StaffRole;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          email?: string | null;
+          role?: StaffRole;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       drugs: {
         Row: {
           id: number;
@@ -318,12 +342,19 @@ export type AutoOrderRunStatus = 'created' | 'skipped_open_draft' | 'error';
 /** Idempotency state for one supplier notification request. */
 export type TelegramNotificationStatus = 'sending' | 'sent' | 'failed';
 
+/**
+ * Staff role stored in `public.profiles`. `pending` and a missing row both
+ * mean "signed in but no access"; only the other three can read Tracker data.
+ */
+export type StaffRole = 'pending' | 'viewer' | 'pharmacist' | 'admin';
+
 // ─────────────────────────────────────────────
 // Row shorthand aliases
 // ─────────────────────────────────────────────
 
 export type ImportBatchRow = Database['public']['Tables']['import_batches']['Row'];
 export type SupplierRow = Database['public']['Tables']['suppliers']['Row'];
+export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 export type DrugRow = Database['public']['Tables']['drugs']['Row'];
 export type PurchaseOrderRow = Database['public']['Tables']['purchase_orders']['Row'];
 

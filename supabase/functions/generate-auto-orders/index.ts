@@ -26,6 +26,10 @@ const CRON_SECRET = Deno.env.get('CRON_SECRET');
 
 const AUTO_BATCH_NAME = 'Auto Plan';
 
+interface AuthUser {
+  id?: string;
+}
+
 interface PlanRow {
   id: string;
   drug_id: string;
@@ -416,7 +420,12 @@ function buildSummary(results: RunResult[]): string {
 // Authorization
 // ─────────────────────────────────────────────
 
-async function verifyUser(token: string): Promise<boolean> {
+/**
+ * A manual run writes with the service role, so RLS alone cannot stop a
+ * viewer or pending account from creating drafts. Require a pharmacist or
+ * admin profile in addition to a valid JWT.
+ */
+async function verifyStaff(token: string): Promise<boolean> {
   if (!SUPABASE_URL || !AUTH_API_KEY) {
     return false;
   }
@@ -425,7 +434,22 @@ async function verifyUser(token: string): Promise<boolean> {
     headers: { Authorization: `Bearer ${token}`, apikey: AUTH_API_KEY },
   });
 
-  return response.ok;
+  if (!response.ok) {
+    return false;
+  }
+
+  const user = await response.json().catch(() => null) as AuthUser | null;
+
+  if (!user?.id) {
+    return false;
+  }
+
+  const rows = await rest<Array<{ role: string }>>('profiles', {
+    params: { select: 'role', id: `eq.${user.id}`, limit: '1' },
+  });
+
+  const role = rows?.[0]?.role;
+  return role === 'pharmacist' || role === 'admin';
 }
 
 /**
@@ -446,7 +470,7 @@ async function authorize(request: Request): Promise<'cron' | 'manual' | null> {
     return null;
   }
 
-  return await verifyUser(authorization.slice('Bearer '.length)) ? 'manual' : null;
+  return await verifyStaff(authorization.slice('Bearer '.length)) ? 'manual' : null;
 }
 
 // ─────────────────────────────────────────────
