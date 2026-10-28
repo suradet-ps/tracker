@@ -30,6 +30,7 @@ const { isDark, toggleTheme } = useTheme();
 const profileRole = ref<StaffRole | null>(null);
 const profileLoading = ref<boolean>(false);
 const profileError = ref<string>('');
+const profileLoadedForUserId = ref<string | null>(null);
 let profileRequest = 0;
 
 const hasDataAccess = computed<boolean>(() => isStaffRole(profileRole.value));
@@ -68,11 +69,13 @@ async function loadProfile(userId: string): Promise<void> {
       throw error;
 
     profileRole.value = data?.role ?? null;
+    profileLoadedForUserId.value = userId;
   }
   catch (err: unknown) {
     if (request !== profileRequest)
       return;
     profileRole.value = null;
+    profileLoadedForUserId.value = null;
     profileError.value = err instanceof Error ? err.message : 'Unknown error';
     console.error('Failed to load profile:', err);
   }
@@ -127,6 +130,7 @@ watch(session, (currentSession) => {
   if (!currentSession) {
     profileRequest += 1;
     profileRole.value = null;
+    profileLoadedForUserId.value = null;
     profileLoading.value = false;
     profileError.value = '';
     return;
@@ -161,7 +165,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="session && profileLoading" class="access-page">
+  <div
+    v-if="session && profileLoading && profileLoadedForUserId !== session.user.id"
+    class="access-page"
+  >
     <section class="access-card" aria-live="polite">
       <BrandMark :size="34" />
       <span class="spinner access-spinner" />
