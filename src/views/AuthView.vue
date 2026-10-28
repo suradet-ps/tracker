@@ -14,7 +14,6 @@ const message = ref<string>('');
 const messageType = ref<MessageType>('success');
 const isLoading = ref<boolean>(false);
 const showPassword = ref<boolean>(false);
-const loginForm = ref<HTMLFormElement | null>(null);
 const router = useRouter();
 
 const messageIcon = computed(() => (messageType.value === 'error' ? 'alertCircle' : 'checkCircle'));
@@ -22,16 +21,6 @@ const messageIcon = computed(() => (messageType.value === 'error' ? 'alertCircle
 function setMessage(text: string, type: MessageType): void {
   message.value = text;
   messageType.value = type;
-}
-
-/**
- * Register sits outside the form element, so surface the browser's native
- * validity feedback before calling `handleRegister`.
- */
-function handleRegisterClick(): void {
-  if (!loginForm.value?.reportValidity())
-    return;
-  handleRegister();
 }
 
 async function handleLogin(): Promise<void> {
@@ -45,34 +34,6 @@ async function handleLogin(): Promise<void> {
     if (error)
       throw error;
     router.push('/');
-  }
-  catch (err: unknown) {
-    const errorMessage = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
-    setMessage(`เกิดข้อผิดพลาด: ${errorMessage}`, 'error');
-  }
-  finally {
-    isLoading.value = false;
-  }
-}
-
-async function handleRegister(): Promise<void> {
-  isLoading.value = true;
-  message.value = '';
-  try {
-    const { data, error } = await supabase.auth.signUp({
-      email: email.value.trim(),
-      password: password.value,
-    });
-    if (error)
-      throw error;
-
-    // Only navigate if a session/user is present (email confirmation may be required)
-    if (data?.session || data?.user) {
-      router.push('/');
-    }
-    else {
-      setMessage('ลงทะเบียนสำเร็จ! กรุณาตรวจสอบอีเมลเพื่อยืนยันบัญชีของคุณก่อนเข้าสู่ระบบ', 'success');
-    }
   }
   catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ';
@@ -139,7 +100,7 @@ async function handleRegister(): Promise<void> {
           <span>{{ message }}</span>
         </div>
 
-        <form ref="loginForm" class="auth-form" @submit.prevent="handleLogin">
+        <form class="auth-form" @submit.prevent="handleLogin">
           <div class="form-group">
             <label class="form-label" for="email">อีเมล</label>
             <input
@@ -184,22 +145,13 @@ async function handleRegister(): Promise<void> {
           </button>
         </form>
 
-        <div class="auth-divider">
-          <span>ยังไม่มีบัญชี?</span>
-        </div>
-
-        <button
-          type="button"
-          class="btn btn-ghost btn-block"
-          :disabled="isLoading"
-          @click="handleRegisterClick"
-        >
-          สมัครใช้งานใหม่
-        </button>
+        <p class="auth-help">
+          ยังไม่มีบัญชี? กรุณาติดต่อผู้ดูแลระบบเพื่อขอสิทธิ์ใช้งาน
+        </p>
       </div>
 
       <p class="auth-note">
-        ระบบภายในสำหรับเจ้าหน้าที่เท่านั้น
+        ระบบภายในสำหรับเจ้าหน้าที่ที่ได้รับอนุมัติเท่านั้น
       </p>
     </section>
   </div>
@@ -335,21 +287,11 @@ async function handleRegister(): Promise<void> {
   border-top-color: var(--on-primary);
 }
 
-.auth-divider {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin: 1.5rem 0 1rem;
+.auth-help {
+  margin-top: 1.25rem;
   color: var(--text-3);
-  font-size: var(--text-xs);
-}
-
-.auth-divider::before,
-.auth-divider::after {
-  content: '';
-  height: 1px;
-  flex-grow: 1;
-  background-color: var(--border);
+  font-size: var(--text-sm);
+  text-align: center;
 }
 
 .auth-note {

@@ -2,6 +2,7 @@
 <script setup lang="ts">
 import type { User } from '@supabase/supabase-js';
 import type { IconName } from '@/components/ui/icons';
+import type { StaffRole } from '@/types/database';
 
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
@@ -10,12 +11,15 @@ import BrandMark from '@/components/ui/BrandMark.vue';
 import { useTheme } from '@/composables/use-theme';
 import { useOrderCountsStore } from '@/stores/order-counts';
 import { supabase } from '@/supabase/client';
+import { STAFF_ROLE_LABELS } from '@/utils/staff-role';
 
 const props = defineProps<{
   /** Whether the mobile drawer is open. */
   open: boolean;
   /** Whether the desktop rail is collapsed to icons. */
   collapsed: boolean;
+  /** Role from the staff allowlist; null while it is unavailable. */
+  role: StaffRole | null;
 }>();
 
 const emit = defineEmits<{
@@ -56,6 +60,10 @@ const user = ref<User | null>(null);
 
 const userInitial = computed<string>(() =>
   (user.value?.email ?? '?').charAt(0).toUpperCase(),
+);
+
+const roleLabel = computed<string>(() =>
+  props.role ? STAFF_ROLE_LABELS[props.role] : 'ผู้ใช้งานระบบ',
 );
 
 /** Resolves a nav badge to its current counter value. */
@@ -165,7 +173,7 @@ onMounted(async () => {
           <span class="user-avatar" aria-hidden="true">{{ userInitial }}</span>
           <span class="user-meta">
             <span class="user-email" :title="user?.email ?? ''">{{ user?.email ?? '-' }}</span>
-            <span class="user-role">ผู้ใช้งานระบบ</span>
+            <span class="user-role">{{ roleLabel }}</span>
           </span>
           <button
             type="button"

@@ -86,6 +86,53 @@ as `supabase/.temp/` is ignored by git.
 </details>
 
 <details>
+<summary>Staff access and roles</summary>
+
+Procurement data is invite-only. Access is controlled by `public.profiles`:
+a signed-in user with no profile row (or with role `pending`) can read
+nothing, and only an administrator can change the allowlist.
+
+| Role         | Read | Create / update                 | Delete                   |
+| ------------ | ---- | ------------------------------- | ------------------------ |
+| `viewer`     | yes  | -                               | -                        |
+| `pharmacist` | yes  | orders, drugs, suppliers, plans | automatic plans          |
+| `admin`      | yes  | yes                             | all records and profiles |
+
+Deleting procurement records is admin-only; pharmacists can delete automatic
+plans because that is the only delete action in the app. The
+`generate-auto-orders` edge function also checks the caller's profile before a
+manual run, since it writes with the service role and bypasses RLS.
+
+**First deploy / existing project**
+
+Run these steps before deploying the app, because the login flow now checks
+the caller's profile.
+
+1. Apply `supabase-schema.sql`. It creates `profiles` and replaces the blanket
+   policies with role-scoped ones.
+2. Bootstrap the first administrator in the SQL editor, replacing the email:
+   ```sql
+   insert into public.profiles (id, email, role)
+   select id, email, 'admin'
+   from auth.users
+   where email = 'admin@hospital.go.th'
+   on conflict (id) do update
+     set email = excluded.email, role = 'admin', updated_at = now();
+   ```
+3. Add each staff member the same way with `'pharmacist'` or `'viewer'`.
+   `auth.users` lists the accounts; a profile row is what grants access.
+4. Turn off public sign-ups so new accounts cannot be created from the login
+   endpoint. Either use Dashboard > Authentication > Settings and disable
+   "Allow new users to sign up" (keep the Email provider enabled), or run
+   `bunx supabase config diff` then `bunx supabase config push` to push
+   `[auth] enable_signup = false` from `supabase/config.toml`.
+
+Accounts without a staff role see a "waiting for approval" screen. Deleting
+the profile row (or the auth user) revokes access immediately.
+
+</details>
+
+<details>
 <summary>Enabling automatic purchase plans</summary>
 
 The plan runner lives in `supabase/functions/generate-auto-orders` and
