@@ -71,6 +71,10 @@ interface OrderRow {
   suppliers: { name: string } | null;
 }
 
+function isSendableOrder(order: OrderRow): boolean {
+  return order.status === 'ต้องสั่งซื้อ' || order.status === 'สั่งแล้ว';
+}
+
 // ─────────────────────────────────────────────
 // CORS
 // ─────────────────────────────────────────────
@@ -239,7 +243,7 @@ function parseOrderIds(value: unknown): string[] | null {
   }
 
   const ids = [...new Set(
-    value.map(id => (typeof id === 'string' || typeof id === 'number' ? String(id).trim() : '')),
+    value.map(id => (typeof id === 'string' || typeof id === 'number' ? String(id).trim().toLowerCase() : '')),
   )];
 
   if (ids.length === 0 || ids.some(id => !UUID_PATTERN.test(id))) {
@@ -250,7 +254,7 @@ function parseOrderIds(value: unknown): string[] | null {
 }
 
 /** Loads every order in the group, in the caller's order. */
-async function fetchOrders(orderIds: string[]): Promise<OrderRow[]> {
+async function fetchOrders(orderIds: string[]): Promise<OrderRow[] | null> {
   const rows = await rest<OrderRow[]>('purchase_orders', {
     params: {
       select: 'id,quantity,unit_count,packaging,status,supplier_id,drugs(name,form,strength),suppliers(name)',
@@ -262,10 +266,20 @@ async function fetchOrders(orderIds: string[]): Promise<OrderRow[]> {
   const missing = orderIds.filter(id => !byId.has(id));
 
   if (missing.length > 0) {
-    throw new Error(`Unknown purchase order ids: ${missing.join(', ')}`);
+    return null;
   }
 
   return orderIds.map(id => byId.get(id)!);
+}
+
+/** Returns the subset of order ids whose notification was already delivered. */
+async function fetchSentOrderIds(orderIds: string[]): Promise<string[]> {
+  const rows = await rest<string[]>('rpc/sent_order_ids', {
+    method: 'POST',
+    body: { p_order_ids: orderIds },
+  });
+
+  return rows ?? [];
 }
 
 // ─────────────────────────────────────────────
@@ -306,7 +320,7 @@ async function verifyStaff(token: string): Promise<StaffCheck> {
 async function idempotencyKey(orderIds: string[]): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(orderIds.join('\n')),
+    new TextEncoder().encode([...orderIds].sort().join('\n')),
   );
 
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
@@ -472,6 +486,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const orders = await fetchOrders(orderIds);
+
+    if (!orders) {
+      return jsonResponse({ error: 'One or more order_ids were not found.' }, 404, cors);
+    }
+
     const supplierId = orders[0]?.supplier_id;
 
     if (!supplierId || orders.some(order => order.supplier_id !== supplierId)) {
@@ -482,8 +501,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ error: 'One or more orders are missing drug or supplier data.' }, 422, cors);
     }
 
-    if (orders.some(order => order.status !== 'ต้องสั่งซื้อ' && order.status !== 'สั่งแล้ว')) {
+    if (orders.some(order => !isSendableOrder(order))) {
       return jsonResponse({ error: 'One or more orders are no longer awaiting notification.' }, 409, cors);
+    }
+
+    const sentOrderIds = await fetchSentOrderIds(orderIds);
+
+    if (sentOrderIds.length === orderIds.length) {
+      return jsonResponse({ status: 'ok', parts: 0, duplicate: true }, 200, cors);
+    }
+
+    if (sentOrderIds.length > 0) {
+      return jsonResponse(
+        { error: 'One or more orders were already notified.', order_ids: sentOrderIds },
+        409,
+        cors,
+      );
     }
 
     const key = await idempotencyKey(orderIds);
@@ -501,11 +534,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
       );
     }
 
+    // A cancellation can commit between the first read and the claim. Re-read
+    // after claiming so a cancelled order is not announced; the remaining
+    // window is closed by the outbox workflow in #126.
+    const currentOrders = await fetchOrders(orderIds);
+
+    if (!currentOrders || currentOrders.some(order => !isSendableOrder(order))) {
+      await markNotificationFailed(key, 'Order status changed before the Telegram send.');
+      return jsonResponse(
+        { error: 'One or more orders changed before the notification was sent.' },
+        409,
+        cors,
+      );
+    }
+
     try {
       const parts = await sendTelegramMessage({
         botToken: TELEGRAM_BOT_TOKEN,
         chatId: TELEGRAM_CHAT_ID,
-        text: buildTelegramMessage(orders),
+        text: buildTelegramMessage(currentOrders),
         parseMode: 'MarkdownV2',
       });
 
