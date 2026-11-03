@@ -1,6 +1,6 @@
 <!-- src/components/AddOrderForm.vue -->
 <script setup lang="ts">
-import type { AddOrderFormData, DrugRow, ImportBatchRow, PurchaseOrderInsert, SupplierRow } from '@/types/database';
+import type { AddOrderFormData, ImportBatchRow, PurchaseOrderInsert, SupplierRow } from '@/types/database';
 
 import { reactive, ref } from 'vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
@@ -71,31 +71,27 @@ async function handleSubmit(): Promise<void> {
     if (!supplierData)
       throw new Error('ไม่สามารถสร้างข้อมูลบริษัทได้');
 
-    // 3. Upsert drug
-    const { data: drugData, error: drugError } = await supabase
-      .from('drugs')
-      .upsert(
-        {
-          name: form.drugName.trim(),
-          form: form.form.trim() || null,
-          strength: form.strength.trim() || null,
-        },
-        { onConflict: 'name,form,strength' },
-      )
-      .select('*')
-      .returns<DrugRow[]>()
-      .single();
+    // 3. Get or create the drug. The RPC normalizes blank form/strength and
+    // serializes concurrent creates, because NULLs never conflict in the
+    // database's unique constraint.
+    const { data: drugId, error: drugError } = await supabase.rpc('get_or_create_drug', {
+      p_name: form.drugName.trim(),
+      p_form: form.form.trim() || null,
+      p_strength: form.strength.trim() || null,
+    });
 
     if (drugError)
       throw drugError;
-    if (!drugData)
+    if (!drugId)
       throw new Error('ไม่สามารถสร้างข้อมูลยาได้');
 
     // 4. Insert purchase order
     const purchaseOrder: PurchaseOrderInsert = {
       import_batch_id: batchData.id,
       supplier_id: supplierData.id,
-      drug_id: drugData.id,
+      // The database types still model uuid columns as numbers; the RPC
+      // returns the real uuid string and PostgREST accepts it unchanged.
+      drug_id: drugId as unknown as number,
       quantity: form.quantity,
       unit_count: form.unitCount.trim(),
       price_per_unit: form.pricePerUnit,

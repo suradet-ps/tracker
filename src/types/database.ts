@@ -349,7 +349,16 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      get_or_create_drug: {
+        Args: {
+          p_name: string;
+          p_form?: string | null;
+          p_strength?: string | null;
+        };
+        Returns: string;
+      };
+    };
     Enums: {
       purchase_order_status: PurchaseOrderStatus;
       auto_order_run_status: AutoOrderRunStatus;
