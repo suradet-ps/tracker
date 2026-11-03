@@ -258,11 +258,15 @@ grant all on table
   public.drugs,
   public.import_batches,
   public.purchase_orders,
-  public.purchase_order_events,
   public.auto_order_plans,
   public.auto_order_runs,
   public.telegram_notifications
 to service_role;
+
+-- History is never writable by an application role, including the service
+-- role: only the trigger, running as the table owner, appends events.
+revoke all on table public.purchase_order_events from service_role;
+grant select on table public.purchase_order_events to service_role;
 
 -- Internal ledger: only the service role used by the edge function may access it.
 revoke all on table public.telegram_notifications from anon, authenticated;
