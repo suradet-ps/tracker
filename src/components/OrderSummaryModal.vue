@@ -1,6 +1,6 @@
 <!-- src/components/OrderSummaryModal.vue -->
 <script setup lang="ts">
-import type { GroupedOrders, OrderViewOrder, SupplierOrderGroup } from '@/types/database';
+import type { GroupedOrders, SupplierOrderGroup } from '@/types/database';
 
 import { computed, ref } from 'vue';
 import AppIcon from '@/components/ui/AppIcon.vue';
@@ -8,7 +8,6 @@ import AppModal from '@/components/ui/AppModal.vue';
 import { supabase } from '@/supabase/client';
 import { extractFunctionErrorMessage, isFunctionTimeoutError } from '@/utils/function-errors';
 import { formatMoney, formatQuantity } from '@/utils/number';
-import { escapeMarkdownV2 } from '@/utils/telegram';
 
 // ─────────────────────────────────────────────
 // Props & Emits
@@ -44,29 +43,8 @@ const grandTotal = computed<number>(() =>
 );
 
 // ─────────────────────────────────────────────
-// Telegram MarkdownV2 helpers
+// Date helpers
 // ─────────────────────────────────────────────
-
-/**
- * Drops a leading "บริษัท" so the salutation never repeats it: supplier
- * names in the database usually already carry the prefix.
- */
-function stripCompanyPrefix(name: string): string {
-  const stripped = name.replace(/^บริษัท\s*/u, '').trim();
-  return stripped || name.trim();
-}
-
-/**
- * Formats a `Date` to a Thai locale date string, then escapes it for MarkdownV2.
- */
-function formatThaiDate(date: Date): string {
-  const formatted = date.toLocaleDateString('th-TH', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-  return escapeMarkdownV2(formatted);
-}
 
 /**
  * Formats a `Date` to an ISO date string (YYYY-MM-DD) suitable for database storage.
@@ -77,59 +55,6 @@ function toIsoDateString(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
-}
-
-/**
- * Builds a single Telegram MarkdownV2 message for a supplier's order group.
- */
-function buildTelegramMessage(
-  supplierName: string,
-  orders: OrderViewOrder[],
-  dateTelegram: string,
-): string {
-  const safeSupplierName = escapeMarkdownV2(stripCompanyPrefix(supplierName));
-
-  // ── Document title ───────────────────────────
-  let message = `*ใบขอสั่งซื้อยา*\n\n`;
-
-  // ── Addressing ──────────────────────────────
-  message += `เรียน บริษัท ${safeSupplierName}\n`;
-  message += `เรื่อง ขออนุมัติสั่งซื้อยา\n`;
-  message += `ลงวันที่ ${dateTelegram}\n\n`;
-
-  // ── Body ────────────────────────────────────
-  message += `ด้วยงานเภสัชกรรม โรงพยาบาลสระโบสถ์\n`;
-  message += `มีความประสงค์ขอสั่งซื้อยา ดังรายการต่อไปนี้\n\n`;
-  message += `*รายละเอียดรายการยาที่ขอสั่งซื้อ*\n\n`;
-
-  // ── Drug list ───────────────────────────────
-  orders.forEach((order, index) => {
-    const drugName = escapeMarkdownV2(order.drugs.name);
-    const form = escapeMarkdownV2(order.drugs.form);
-    const strength = escapeMarkdownV2(order.drugs.strength);
-    const packaging = escapeMarkdownV2(order.packaging);
-    const quantity = escapeMarkdownV2(order.quantity);
-    const unit = escapeMarkdownV2(order.unit_count);
-
-    message += `*${index + 1}\\.* *${drugName}*`;
-    if (form)
-      message += ` \\[${form}\\]`;
-    if (strength)
-      message += ` \\(${strength}\\)`;
-    message += `\n`;
-
-    if (packaging)
-      message += `   บรรจุภัณฑ์: ${packaging}\n`;
-
-    message += `   จำนวน: ${quantity} × ${unit}\n\n`;
-  });
-
-  // ── Footer ──────────────────────────────────
-  message += `หมายเหตุ กรุณาออกบิลโดยไม่ลงวันที่\n\n`;
-  message += `ขอแสดงความนับถือ\n`;
-  message += `_งานเภสัชกรรม รพ\\.สระโบสถ์_`;
-
-  return message;
 }
 
 // ─────────────────────────────────────────────
@@ -164,7 +89,6 @@ async function confirmAndSend(): Promise<void> {
 
   try {
     const orderDate = new Date();
-    const dateTelegram = formatThaiDate(orderDate);
     const dateForDatabase = toIsoDateString(orderDate);
 
     // Notify each supplier group, then move that group's orders to สั่งแล้ว.
@@ -178,15 +102,12 @@ async function confirmAndSend(): Promise<void> {
       const groupOrderIds = group.orders.map(order => order.id);
 
       if (!sentSuppliers.has(supplierName)) {
-        const message = buildTelegramMessage(supplierName, group.orders, dateTelegram);
-
-        // Invoke Supabase Edge Function to send Telegram notification. The
-        // timeout aborts a hung invocation instead of stranding the modal.
-        // `order_ids` gives the function a stable group key so a retry can
-        // never send the same supplier a duplicate message.
+        // The function loads the order rows and builds the Telegram message
+        // itself; the client only names the group. `order_ids` also gives the
+        // function a stable key so a retry cannot duplicate the message.
         const { error: functionError } = await supabase.functions.invoke(
           'send-telegram-notify',
-          { body: { message, order_ids: groupOrderIds }, timeout: NOTIFY_TIMEOUT_MS },
+          { body: { order_ids: groupOrderIds }, timeout: NOTIFY_TIMEOUT_MS },
         );
 
         if (functionError) {
