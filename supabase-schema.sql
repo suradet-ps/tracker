@@ -81,7 +81,8 @@ create table if not exists public.import_batches (
   constraint import_batches_file_name_key unique (file_name)
 );
 
-comment on table public.import_batches is 'เก็บประวัติการนำเข้าไฟล์ CSV ในแต่ละครั้ง';
+comment on table public.import_batches is 'เก็บแหล่งที่มาของชุดใบสั่งซื้อ (Manual Add, Auto Plan)';
+comment on column public.import_batches.file_name is 'ชื่อชุด/แหล่งที่มา เช่น Manual Add หรือ Auto Plan';
 
 create table if not exists public.purchase_orders (
   id uuid primary key default gen_random_uuid(),
