@@ -368,6 +368,71 @@ revoke all on function public.sent_order_ids(uuid[]) from public;
 grant execute on function public.sent_order_ids(uuid[]) to service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- Drug helpers
+--
+-- `unique (name, form, strength)` treats NULLs as distinct, so a blank form
+-- or strength never conflicts and every manual add inserts another master
+-- row. Normalize blanks to NULL, serialize concurrent creates with an
+-- advisory lock, and return the existing row when the identity already exists.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create or replace function public.get_or_create_drug(
+  p_name text,
+  p_form text default null,
+  p_strength text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_name text := btrim(coalesce(p_name, ''));
+  v_form text := nullif(btrim(coalesce(p_form, '')), '');
+  v_strength text := nullif(btrim(coalesce(p_strength, '')), '');
+  v_id uuid;
+begin
+  if not public.can_write() then
+    raise exception 'not authorized' using errcode = '42501';
+  end if;
+
+  if v_name = '' then
+    raise exception 'drug name is required' using errcode = '22023';
+  end if;
+
+  -- The unique constraint cannot see NULLs, so the lock is the duplicate guard.
+  perform pg_advisory_xact_lock(
+    hashtextextended(
+      v_name || '|' || coalesce(v_form, '') || '|' || coalesce(v_strength, ''),
+      0
+    )
+  );
+
+  select d.id
+    into v_id
+    from public.drugs d
+   where d.name = v_name
+     and coalesce(d.form, '') = coalesce(v_form, '')
+     and coalesce(d.strength, '') = coalesce(v_strength, '')
+   order by d.created_at nulls last, d.id
+   limit 1;
+
+  if v_id is not null then
+    return v_id;
+  end if;
+
+  insert into public.drugs (name, form, strength)
+  values (v_name, v_form, v_strength)
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.get_or_create_drug(text, text, text) from public;
+grant execute on function public.get_or_create_drug(text, text, text) to authenticated, service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Policies
 --
 -- viewer     -> read every Tracker table
@@ -707,3 +772,6 @@ comment on column public.auto_order_plans.order_quantity is 'จำนวนท�
 -- 2026-11-03: added sent_order_ids(uuid[]) for the Telegram notifier (issue #94).
 --             Returns the order ids that already have a delivered notification,
 --             so a stale order cannot be resent when grouped with a new one.
+-- 2026-11-03: added get_or_create_drug for manual order entry (issue #95).
+--             Normalizes blank form/strength to NULL and serializes concurrent
+--             creates so one drug never becomes several master rows.
