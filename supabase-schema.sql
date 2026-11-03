@@ -112,19 +112,11 @@ create table if not exists public.purchase_order_events (
   order_id uuid not null,
   actor_id uuid,
   actor_email text,
-  event_type text not null
-    constraint purchase_order_events_type_check
-    check (event_type in ('created', 'baseline', 'updated', 'status_changed', 'deleted')),
+  event_type text not null,
   from_status text,
   to_status text,
   order_snapshot jsonb not null,
-  created_at timestamptz not null default now(),
-  constraint purchase_order_events_transition_check check (
-    (event_type in ('created', 'baseline') and from_status is null and to_status is not null)
-    or (event_type = 'updated' and from_status is not null and to_status is not null and from_status = to_status)
-    or (event_type = 'status_changed' and from_status is not null and to_status is not null and from_status <> to_status)
-    or (event_type = 'deleted' and from_status is not null and to_status is null)
-  )
+  created_at timestamptz not null default now()
 );
 
 comment on table public.purchase_order_events is 'ประวัติการเปลี่ยนแปลงใบสั่งซื้อแบบ append-only พร้อมผู้กระทำและเวลา';
@@ -135,6 +127,24 @@ comment on column public.purchase_order_events.created_at is 'เวลาที
 
 create index if not exists purchase_order_events_order_created_idx
   on public.purchase_order_events (order_id, created_at desc, id desc);
+
+-- Kept as explicit ALTERs so re-applying this file updates the constraints on
+-- a table created by an earlier revision.
+alter table public.purchase_order_events
+  drop constraint if exists purchase_order_events_type_check;
+alter table public.purchase_order_events
+  add constraint purchase_order_events_type_check
+  check (event_type in ('created', 'baseline', 'updated', 'status_changed', 'deleted'));
+
+alter table public.purchase_order_events
+  drop constraint if exists purchase_order_events_transition_check;
+alter table public.purchase_order_events
+  add constraint purchase_order_events_transition_check check (
+    (event_type in ('created', 'baseline') and from_status is null and to_status is not null)
+    or (event_type = 'updated' and from_status is not null and to_status is not null and from_status = to_status)
+    or (event_type = 'status_changed' and from_status is not null and to_status is not null and from_status <> to_status)
+    or (event_type = 'deleted' and from_status is not null and to_status is null)
+  );
 
 create table if not exists public.auto_order_plans (
   id uuid primary key default gen_random_uuid(),
