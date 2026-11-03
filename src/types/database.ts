@@ -369,10 +369,11 @@ export type Database = {
 export type PurchaseOrderStatus = 'ต้องสั่งซื้อ' | 'สั่งแล้ว' | 'รับของแล้ว' | 'ยกเลิก';
 
 /**
- * Append-only audit event for one purchase order. `deleted` keeps the final
+ * Append-only audit event for one purchase order. `baseline` is a migration
+ * snapshot of an order that predates the trigger, `deleted` keeps the final
  * snapshot after the order row is gone, so the trail survives deletion.
  */
-export type PurchaseOrderEventType = 'created' | 'updated' | 'status_changed' | 'deleted';
+export type PurchaseOrderEventType = 'created' | 'baseline' | 'updated' | 'status_changed' | 'deleted';
 
 /**
  * Result of evaluating one automatic purchase plan.

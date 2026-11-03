@@ -114,20 +114,21 @@ create table if not exists public.purchase_order_events (
   actor_email text,
   event_type text not null
     constraint purchase_order_events_type_check
-    check (event_type in ('created', 'updated', 'status_changed', 'deleted')),
+    check (event_type in ('created', 'baseline', 'updated', 'status_changed', 'deleted')),
   from_status text,
   to_status text,
   order_snapshot jsonb not null,
   created_at timestamptz not null default now(),
   constraint purchase_order_events_transition_check check (
-    (event_type = 'created' and from_status is null and to_status is not null)
-    or (event_type = 'updated' and from_status is not null and from_status = to_status)
-    or (event_type = 'status_changed' and from_status is not null and from_status <> to_status)
+    (event_type in ('created', 'baseline') and from_status is null and to_status is not null)
+    or (event_type = 'updated' and from_status is not null and to_status is not null and from_status = to_status)
+    or (event_type = 'status_changed' and from_status is not null and to_status is not null and from_status <> to_status)
     or (event_type = 'deleted' and from_status is not null and to_status is null)
   )
 );
 
 comment on table public.purchase_order_events is 'ประวัติการเปลี่ยนแปลงใบสั่งซื้อแบบ append-only พร้อมผู้กระทำและเวลา';
+comment on column public.purchase_order_events.event_type is 'created = เพิ่มใบสั่งซื้อ, baseline = snapshot ตอน migration, updated = แก้ไขที่ไม่ใช่สถานะ, status_changed = เปลี่ยนสถานะ, deleted = ลบใบสั่งซื้อ';
 comment on column public.purchase_order_events.order_snapshot is 'สำเนาข้อมูลใบสั่งซื้อ ณ เวลาที่เกิดเหตุการณ์ เพื่อให้ยังตรวจสอบได้แม้ใบสั่งซื้อถูกลบ';
 comment on column public.purchase_order_events.actor_id is 'auth.uid() ของผู้กระทำ; null เมื่อระบบเป็นผู้สร้าง (service role)';
 comment on column public.purchase_order_events.created_at is 'เวลาที่เหตุการณ์ถูกบันทึกโดยเซิร์ฟเวอร์ ไม่สามารถแก้ไขได้';
@@ -542,7 +543,7 @@ begin
         (order_id, actor_id, actor_email, event_type, from_status, to_status, order_snapshot)
       values
         (new.id, v_actor_id, v_actor_email, 'status_changed', old.status, new.status, to_jsonb(new));
-    elsif to_jsonb(new) is distinct from to_jsonb(old) then
+    else
       insert into public.purchase_order_events
         (order_id, actor_id, actor_email, event_type, from_status, to_status, order_snapshot)
       values
@@ -561,7 +562,7 @@ begin
 end;
 $$;
 
--- created_at is the immutable anchor of the audit trail.
+-- created_at and id are the immutable anchors of the audit trail.
 create or replace function public.purchase_orders_created_at_immutable()
 returns trigger
 language plpgsql
@@ -569,8 +570,9 @@ security definer
 set search_path = ''
 as $$
 begin
-  if new.created_at is distinct from old.created_at then
-    raise exception 'purchase_orders.created_at is immutable'
+  if new.created_at is distinct from old.created_at
+     or new.id is distinct from old.id then
+    raise exception 'purchase_orders.created_at and id are immutable'
       using errcode = 'integrity_constraint_violation';
   end if;
   return new;
@@ -608,15 +610,18 @@ create trigger purchase_order_events_append_only
   before update or delete on public.purchase_order_events
   for each row execute function public.reject_purchase_order_event_mutation();
 
--- Baseline for orders created before the trigger existed. Existing event rows
--- (including a later deletion) win, so re-running this file never duplicates.
+-- Baseline snapshots for orders created before the trigger existed. `baseline`
+-- is deliberately distinct from `created`: the row shows the status at
+-- migration time, not the status the order had when it was first inserted.
+-- Existing event rows (including a later deletion) win, so re-running this
+-- file never duplicates a baseline.
 insert into public.purchase_order_events
   (order_id, actor_id, actor_email, event_type, from_status, to_status, order_snapshot, created_at)
 select
   po.id,
   null,
   null,
-  'created',
+  'baseline',
   null,
   po.status,
   to_jsonb(po),
@@ -661,5 +666,6 @@ comment on column public.auto_order_plans.order_quantity is 'จำนวนท�
 --             - every insert, update, status transition, and delete appends
 --               an immutable event with actor, from/to status, and server time.
 --             - clients may read the trail but can never insert, update, or
---               delete events; purchase_orders.created_at is immutable.
---             - existing orders receive one baseline 'created' event.
+--               delete events; purchase_orders.created_at and id are immutable.
+--             - existing orders receive one 'baseline' snapshot event, which
+--               is distinct from an original 'created' event.
