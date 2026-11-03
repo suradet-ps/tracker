@@ -57,14 +57,14 @@ async function handleLogin(): Promise<void> {
       <div class="brand-copy">
         <h1>ติดตามใบสั่งซื้อ ยาและเวชภัณฑ์</h1>
         <p>
-          จากรายการนำเข้า ถึงวันรับของ - ทุกคำสั่งซื้อมีสถานะ
+          จากรายการยา ถึงวันรับของ - ทุกคำสั่งซื้อมีสถานะ
           มีวันที่ และมีประวัติให้ตรวจสอบเสมอ
         </p>
 
         <ul class="brand-points">
           <li>
-            <AppIcon name="fileSpreadsheet" :size="17" />
-            นำเข้ารายการสั่งซื้อจากไฟล์ CSV
+            <AppIcon name="clipboardList" :size="17" />
+            สร้างใบสั่งซื้อด้วยตนเองหรือ quick order
           </li>
           <li>
             <AppIcon name="truck" :size="17" />

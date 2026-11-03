@@ -233,7 +233,7 @@ onMounted(fetchCatalog);
       v-else-if="draftItems.length === 0"
       icon="package"
       title="ยังไม่มีรายการยาในระบบ"
-      description="กรุณานำเข้าข้อมูลยาก่อนเริ่มสร้างใบสั่งซื้อ"
+      description="เพิ่มรายการยาด้วยตนเองก่อน แล้วกลับมาเลือกสร้างใบสั่งซื้อ"
     />
 
     <template v-else>
