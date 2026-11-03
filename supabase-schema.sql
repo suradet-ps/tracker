@@ -26,8 +26,8 @@
 --   - Avoid destructive drop/truncate statements; always back up first.
 --
 -- Scope: the Tracker tables only (suppliers, drugs, import_batches,
---        purchase_orders, auto_order_plans, auto_order_runs, profiles,
---        telegram_notifications).
+--        purchase_orders, purchase_order_events, auto_order_plans,
+--        auto_order_runs, profiles, telegram_notifications).
 -- Note: this project shares its public schema with another system (reading_*),
 --       so never drop the public schema.
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -102,6 +102,49 @@ create table if not exists public.purchase_orders (
 comment on table public.purchase_orders is 'ตารางหลักสำหรับบันทึกและติดตามการสั่งซื้อแต่ละรายการ';
 
 comment on column public.purchase_orders.packaging is 'ข้อมูลบรรจุภัณฑ์ของยาในรายการสั่งซื้อนั้นๆ เช่น ขวด, กล่อง 100 เม็ด';
+
+-- Append-only audit trail for purchase_orders. Rows are written by the
+-- triggers below, never by clients. order_id deliberately has no foreign key:
+-- deleting an order must not erase its history, so the deleted snapshot is
+-- kept here with actor and timestamp.
+create table if not exists public.purchase_order_events (
+  id bigint generated always as identity primary key,
+  order_id uuid not null,
+  actor_id uuid,
+  actor_email text,
+  event_type text not null,
+  from_status text,
+  to_status text,
+  order_snapshot jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+comment on table public.purchase_order_events is 'ประวัติการเปลี่ยนแปลงใบสั่งซื้อแบบ append-only พร้อมผู้กระทำและเวลา';
+comment on column public.purchase_order_events.event_type is 'created = เพิ่มใบสั่งซื้อ, baseline = snapshot ตอน migration, updated = แก้ไขที่ไม่ใช่สถานะ, status_changed = เปลี่ยนสถานะ, deleted = ลบใบสั่งซื้อ';
+comment on column public.purchase_order_events.order_snapshot is 'สำเนาข้อมูลใบสั่งซื้อ ณ เวลาที่เกิดเหตุการณ์ เพื่อให้ยังตรวจสอบได้แม้ใบสั่งซื้อถูกลบ';
+comment on column public.purchase_order_events.actor_id is 'auth.uid() ของผู้กระทำ; null เมื่อระบบเป็นผู้สร้าง (service role)';
+comment on column public.purchase_order_events.created_at is 'เวลาที่เหตุการณ์ถูกบันทึกโดยเซิร์ฟเวอร์ ไม่สามารถแก้ไขได้';
+
+create index if not exists purchase_order_events_order_created_idx
+  on public.purchase_order_events (order_id, created_at desc, id desc);
+
+-- Kept as explicit ALTERs so re-applying this file updates the constraints on
+-- a table created by an earlier revision.
+alter table public.purchase_order_events
+  drop constraint if exists purchase_order_events_type_check;
+alter table public.purchase_order_events
+  add constraint purchase_order_events_type_check
+  check (event_type in ('created', 'baseline', 'updated', 'status_changed', 'deleted'));
+
+alter table public.purchase_order_events
+  drop constraint if exists purchase_order_events_transition_check;
+alter table public.purchase_order_events
+  add constraint purchase_order_events_transition_check check (
+    (event_type in ('created', 'baseline') and from_status is null and to_status is not null)
+    or (event_type = 'updated' and from_status is not null and to_status is not null and from_status = to_status)
+    or (event_type = 'status_changed' and from_status is not null and to_status is not null and from_status <> to_status)
+    or (event_type = 'deleted' and from_status is not null and to_status is null)
+  );
 
 create table if not exists public.auto_order_plans (
   id uuid primary key default gen_random_uuid(),
@@ -178,6 +221,7 @@ alter table public.suppliers enable row level security;
 alter table public.drugs enable row level security;
 alter table public.import_batches enable row level security;
 alter table public.purchase_orders enable row level security;
+alter table public.purchase_order_events enable row level security;
 alter table public.auto_order_plans enable row level security;
 alter table public.auto_order_runs enable row level security;
 alter table public.telegram_notifications enable row level security;
@@ -198,6 +242,7 @@ revoke all on table
   public.drugs,
   public.import_batches,
   public.purchase_orders,
+  public.purchase_order_events,
   public.auto_order_plans,
   public.auto_order_runs,
   public.telegram_notifications
@@ -215,6 +260,9 @@ to authenticated;
 -- Run logs are written by the service role and read-only in the app.
 grant select on table public.auto_order_runs to authenticated;
 
+-- The audit trail is written by triggers and read-only for every client role.
+grant select on table public.purchase_order_events to authenticated;
+
 grant all on table
   public.profiles,
   public.suppliers,
@@ -225,6 +273,11 @@ grant all on table
   public.auto_order_runs,
   public.telegram_notifications
 to service_role;
+
+-- History is never writable by an application role, including the service
+-- role: only the trigger, running as the table owner, appends events.
+revoke all on table public.purchase_order_events from service_role;
+grant select on table public.purchase_order_events to service_role;
 
 -- Internal ledger: only the service role used by the edge function may access it.
 revoke all on table public.telegram_notifications from anon, authenticated;
@@ -424,6 +477,13 @@ create policy "Admins can delete purchase orders"
   on public.purchase_orders for delete to authenticated
   using (public.is_admin());
 
+-- purchase_order_events: append-only. Staff may read the trail; no client
+-- role has insert, update, or delete privileges. The triggers below write it.
+drop policy if exists "Staff can read purchase order events" on public.purchase_order_events;
+create policy "Staff can read purchase order events"
+  on public.purchase_order_events for select to authenticated
+  using (public.is_staff());
+
 -- auto_order_plans
 drop policy if exists "Allow full access for authenticated users" on public.auto_order_plans;
 drop policy if exists "Staff can read automatic plans" on public.auto_order_plans;
@@ -458,6 +518,131 @@ create policy "Staff can read automatic run logs"
 
 -- telegram_notifications has RLS enabled with no policies: service role only.
 
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Audit triggers
+--
+-- The event table is append-only: every insert, update, status transition,
+-- and delete on purchase_orders appends one row with auth.uid() as the actor
+-- and the server timestamp. No client role can write, rewrite, or delete events.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create or replace function public.record_purchase_order_event()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id uuid := auth.uid();
+  v_actor_email text;
+begin
+  select p.email
+    into v_actor_email
+    from public.profiles p
+   where p.id = v_actor_id;
+
+  if tg_op = 'INSERT' then
+    insert into public.purchase_order_events
+      (order_id, actor_id, actor_email, event_type, from_status, to_status, order_snapshot)
+    values
+      (new.id, v_actor_id, v_actor_email, 'created', null, new.status, to_jsonb(new));
+    return new;
+  elsif tg_op = 'UPDATE' then
+    if new.status is distinct from old.status then
+      insert into public.purchase_order_events
+        (order_id, actor_id, actor_email, event_type, from_status, to_status, order_snapshot)
+      values
+        (new.id, v_actor_id, v_actor_email, 'status_changed', old.status, new.status, to_jsonb(new));
+    else
+      insert into public.purchase_order_events
+        (order_id, actor_id, actor_email, event_type, from_status, to_status, order_snapshot)
+      values
+        (new.id, v_actor_id, v_actor_email, 'updated', old.status, new.status, to_jsonb(new));
+    end if;
+    return new;
+  elsif tg_op = 'DELETE' then
+    insert into public.purchase_order_events
+      (order_id, actor_id, actor_email, event_type, from_status, to_status, order_snapshot)
+    values
+      (old.id, v_actor_id, v_actor_email, 'deleted', old.status, null, to_jsonb(old));
+    return old;
+  end if;
+
+  return null;
+end;
+$$;
+
+-- created_at and id are the immutable anchors of the audit trail.
+create or replace function public.purchase_orders_created_at_immutable()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.created_at is distinct from old.created_at
+     or new.id is distinct from old.id then
+    raise exception 'purchase_orders.created_at and id are immutable'
+      using errcode = 'integrity_constraint_violation';
+  end if;
+  return new;
+end;
+$$;
+
+-- Defence in depth: even a role with table privileges cannot rewrite history.
+create or replace function public.reject_purchase_order_event_mutation()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  raise exception 'purchase_order_events is append-only';
+end;
+$$;
+
+revoke all on function public.record_purchase_order_event() from public;
+revoke all on function public.purchase_orders_created_at_immutable() from public;
+revoke all on function public.reject_purchase_order_event_mutation() from public;
+
+drop trigger if exists purchase_orders_created_at_immutable on public.purchase_orders;
+create trigger purchase_orders_created_at_immutable
+  before update on public.purchase_orders
+  for each row execute function public.purchase_orders_created_at_immutable();
+
+drop trigger if exists purchase_orders_record_event on public.purchase_orders;
+create trigger purchase_orders_record_event
+  after insert or update or delete on public.purchase_orders
+  for each row execute function public.record_purchase_order_event();
+
+drop trigger if exists purchase_order_events_append_only on public.purchase_order_events;
+create trigger purchase_order_events_append_only
+  before update or delete on public.purchase_order_events
+  for each row execute function public.reject_purchase_order_event_mutation();
+
+-- Baseline snapshots for orders created before the trigger existed. `baseline`
+-- is deliberately distinct from `created`: the row shows the status at
+-- migration time, not the status the order had when it was first inserted.
+-- Existing event rows (including a later deletion) win, so re-running this
+-- file never duplicates a baseline.
+insert into public.purchase_order_events
+  (order_id, actor_id, actor_email, event_type, from_status, to_status, order_snapshot, created_at)
+select
+  po.id,
+  null,
+  null,
+  'baseline',
+  null,
+  po.status,
+  to_jsonb(po),
+  coalesce(po.created_at, now())
+from public.purchase_orders po
+where not exists (
+  select 1
+  from public.purchase_order_events e
+  where e.order_id = po.id
+);
+
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- [MIGRATIONS] Log changes made after the 2026-10-09 baseline
 -- ═══════════════════════════════════════════════════════════════════════════════
@@ -487,3 +672,10 @@ comment on column public.auto_order_plans.order_quantity is 'จำนวนท�
 --                   set email = excluded.email, role = 'admin',
 --                       updated_at = now();
 --             - then disable public sign-ups (Dashboard or `supabase config push`).
+-- 2026-11-03: added purchase_order_events and audit triggers (issue #93).
+--             - every insert, update, status transition, and delete appends
+--               an immutable event with actor, from/to status, and server time.
+--             - clients may read the trail but can never insert, update, or
+--               delete events; purchase_orders.created_at and id are immutable.
+--             - existing orders receive one 'baseline' snapshot event, which
+--               is distinct from an original 'created' event.
