@@ -343,6 +343,31 @@ grant execute on function public.can_write() to authenticated, service_role;
 grant execute on function public.is_admin() to authenticated, service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- Notification helpers
+--
+-- The notifier uses this before claiming a group, so an order that was already
+-- delivered cannot be sent again just because a new order joined the group.
+-- Only the service role may call it; telegram_notifications stays internal.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+create or replace function public.sent_order_ids(p_order_ids uuid[])
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select distinct (item.order_id)::uuid
+  from public.telegram_notifications tn
+  cross join lateral jsonb_array_elements_text(tn.order_ids) as item(order_id)
+  where tn.status = 'sent'
+    and (item.order_id)::uuid = any(p_order_ids);
+$$;
+
+revoke all on function public.sent_order_ids(uuid[]) from public;
+grant execute on function public.sent_order_ids(uuid[]) to service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Policies
 --
 -- viewer     -> read every Tracker table
@@ -679,3 +704,6 @@ comment on column public.auto_order_plans.order_quantity is 'จำนวนท�
 --               delete events; purchase_orders.created_at and id are immutable.
 --             - existing orders receive one 'baseline' snapshot event, which
 --               is distinct from an original 'created' event.
+-- 2026-11-03: added sent_order_ids(uuid[]) for the Telegram notifier (issue #94).
+--             Returns the order ids that already have a delivered notification,
+--             so a stale order cannot be resent when grouped with a new one.

@@ -67,11 +67,12 @@ Supabase project, and a Telegram bot with its chat id.
 <details>
 <summary>Deploying the Telegram edge function</summary>
 
-The notifier lives in `supabase/functions/send-telegram-notify`. It records
-each supplier group in the `telegram_notifications` table so a retry after a
-timeout cannot send the same Telegram message twice. Apply
-`supabase-schema.sql` first, then deploy with the Supabase CLI (Docker is not
-required):
+The notifier lives in `supabase/functions/send-telegram-notify`. It requires a
+signed-in pharmacist or admin, loads the order rows itself, and builds the
+Telegram message server-side; the client only sends order ids. It records each
+supplier group in the `telegram_notifications` table so a retry after a timeout
+cannot send the same Telegram message twice. Apply `supabase-schema.sql` first,
+then deploy with the Supabase CLI (Docker is not required):
 
 ```
 ⟫ bunx supabase login
@@ -80,8 +81,10 @@ required):
 ```
 
 Secrets stay in the Supabase project (`TELEGRAM_BOT_TOKEN`,
-`TELEGRAM_CHAT_ID`); they are never Vite variables. Local CLI state such
-as `supabase/.temp/` is ignored by git.
+`TELEGRAM_CHAT_ID`); they are never Vite variables. Firebase Hosting, Vercel
+domains, and local development are allowed by default; for a custom domain,
+set `ALLOWED_ORIGINS` to a comma-separated list of browser origins. Local CLI
+state such as `supabase/.temp/` is ignored by git.
 
 </details>
 
