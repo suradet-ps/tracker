@@ -36,5 +36,8 @@
     "vite-plugin-vue-devtools": "^8.0.0",
     "vitest": "^5.0.0",
     "vue-tsc": "^3.2.4"
+  },
+  "overrides": {
+    "tinypool": "2.2.0"
   }
 }
