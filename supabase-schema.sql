@@ -251,11 +251,16 @@ from anon, authenticated, public;
 grant select, insert, update, delete on table
   public.profiles,
   public.suppliers,
-  public.drugs,
   public.import_batches,
   public.purchase_orders,
   public.auto_order_plans
 to authenticated;
+
+-- Drugs are created only through get_or_create_drug. Keeping INSERT off the
+-- table prevents a direct API call from bypassing that function's advisory
+-- lock and creating a duplicate master row.
+grant select, update, delete on table public.drugs to authenticated;
+revoke insert on table public.drugs from authenticated;
 
 -- Run logs are written by the service role and read-only in the app.
 grant select on table public.auto_order_runs to authenticated;
@@ -387,9 +392,9 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_name text := btrim(coalesce(p_name, ''));
-  v_form text := nullif(btrim(coalesce(p_form, '')), '');
-  v_strength text := nullif(btrim(coalesce(p_strength, '')), '');
+  v_name text := btrim(coalesce(p_name, ''), E' \t\r\n\f\v');
+  v_form text := nullif(btrim(coalesce(p_form, ''), E' \t\r\n\f\v'), '');
+  v_strength text := nullif(btrim(coalesce(p_strength, ''), E' \t\r\n\f\v'), '');
   v_id uuid;
 begin
   if not public.can_write() then
@@ -411,9 +416,9 @@ begin
   select d.id
     into v_id
     from public.drugs d
-   where d.name = v_name
-     and coalesce(d.form, '') = coalesce(v_form, '')
-     and coalesce(d.strength, '') = coalesce(v_strength, '')
+   where btrim(d.name, E' \t\r\n\f\v') = v_name
+     and coalesce(btrim(d.form, E' \t\r\n\f\v'), '') = coalesce(v_form, '')
+     and coalesce(btrim(d.strength, E' \t\r\n\f\v'), '') = coalesce(v_strength, '')
    order by d.created_at nulls last, d.id
    limit 1;
 
@@ -506,10 +511,7 @@ create policy "Staff can read drugs"
   on public.drugs for select to authenticated
   using (public.is_staff());
 
-create policy "Writers can insert drugs"
-  on public.drugs for insert to authenticated
-  with check (public.can_write());
-
+-- No INSERT policy: drugs are created through get_or_create_drug only.
 create policy "Writers can update drugs"
   on public.drugs for update to authenticated
   using (public.can_write())
@@ -775,3 +777,5 @@ comment on column public.auto_order_plans.order_quantity is 'จำนวนท�
 -- 2026-11-03: added get_or_create_drug for manual order entry (issue #95).
 --             Normalizes blank form/strength to NULL and serializes concurrent
 --             creates so one drug never becomes several master rows.
+--             Authenticated clients lost direct INSERT on drugs, so the RPC
+--             is the only writer and its advisory lock cannot be bypassed.
