@@ -161,6 +161,42 @@ export type Database = {
           },
         ];
       };
+      purchase_order_events: {
+        Row: {
+          id: number;
+          order_id: string;
+          actor_id: string | null;
+          actor_email: string | null;
+          event_type: PurchaseOrderEventType;
+          from_status: PurchaseOrderStatus | null;
+          to_status: PurchaseOrderStatus | null;
+          order_snapshot: Record<string, unknown>;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          order_id: string;
+          actor_id?: string | null;
+          actor_email?: string | null;
+          event_type: PurchaseOrderEventType;
+          from_status?: PurchaseOrderStatus | null;
+          to_status?: PurchaseOrderStatus | null;
+          order_snapshot: Record<string, unknown>;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          order_id?: string;
+          actor_id?: string | null;
+          actor_email?: string | null;
+          event_type?: PurchaseOrderEventType;
+          from_status?: PurchaseOrderStatus | null;
+          to_status?: PurchaseOrderStatus | null;
+          order_snapshot?: Record<string, unknown>;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       auto_order_plans: {
         Row: {
           id: number;
@@ -333,6 +369,12 @@ export type Database = {
 export type PurchaseOrderStatus = 'ต้องสั่งซื้อ' | 'สั่งแล้ว' | 'รับของแล้ว' | 'ยกเลิก';
 
 /**
+ * Append-only audit event for one purchase order. `deleted` keeps the final
+ * snapshot after the order row is gone, so the trail survives deletion.
+ */
+export type PurchaseOrderEventType = 'created' | 'updated' | 'status_changed' | 'deleted';
+
+/**
  * Result of evaluating one automatic purchase plan.
  * `created` = draft purchase order inserted, `skipped_open_draft` = a draft
  * for the same drug is still waiting for review, `error` = the run failed.
@@ -357,6 +399,7 @@ export type SupplierRow = Database['public']['Tables']['suppliers']['Row'];
 export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 export type DrugRow = Database['public']['Tables']['drugs']['Row'];
 export type PurchaseOrderRow = Database['public']['Tables']['purchase_orders']['Row'];
+export type PurchaseOrderEventRow = Database['public']['Tables']['purchase_order_events']['Row'];
 
 export type ImportBatchInsert = Database['public']['Tables']['import_batches']['Insert'];
 export type SupplierInsert = Database['public']['Tables']['suppliers']['Insert'];
